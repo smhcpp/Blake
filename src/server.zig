@@ -13,6 +13,7 @@ const Popup = @import("popup.zig").Popup;
 pub const Server = struct {
     wl_server: *wl.Server,
     backend: *wlr.Backend,
+    socket: []const u8 = undefined,
     renderer: *wlr.Renderer,
     allocator: *wlr.Allocator,
     scene: *wlr.Scene,
@@ -382,13 +383,29 @@ pub const Server = struct {
             // Exit the compositor
 
             xkb.Keysym.Return => {
+                const cmd = "kitty";
+                var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, gpa);
+                var env_map = std.process.getEnvMap(gpa) catch |err| {
+                    std.log.err("Failed to spawn: {}", .{err});
+                    return false;
+                };
+                defer env_map.deinit();
+                env_map.put("WAYLAND_DISPLAY", server.socket) catch |err| {
+                    std.log.err("Failed to put the socket for the enviornment {}", .{err});
+                };
+                child.env_map = &env_map;
+                // try child.spawn();
                 // std.log.info("Key Enter pressed", .{});
-                var child = std.process.Child.init(&[_][]const u8{"kitty"}, std.heap.page_allocator);
+                // child.env_map = env_map_ptr;
+
+                // Set the environment variables
                 _ = child.spawn() catch |err| {
                     std.log.err("Failed to spawn: {}", .{err});
+                    return false;
                 };
                 return true;
             },
+
             xkb.Keysym.Escape => server.wl_server.terminate(),
             // Focus the next toplevel in the stack, pushing the current top to the back
             xkb.Keysym.F1 => {
