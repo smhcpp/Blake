@@ -377,11 +377,22 @@ pub const Server = struct {
     /// Assumes the modifier used for compositor keybinds is pressed
     /// Returns true if the key was handled
     pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
+        // std.log.info("handle Keybind pressed", .{});
         switch (@intFromEnum(key)) {
             // Exit the compositor
+
+            xkb.Keysym.Return => {
+                // std.log.info("Key Enter pressed", .{});
+                var child = std.process.Child.init(&[_][]const u8{"kitty"}, std.heap.page_allocator);
+                _ = child.spawn() catch |err| {
+                    std.log.err("Failed to spawn: {}", .{err});
+                };
+                return true;
+            },
             xkb.Keysym.Escape => server.wl_server.terminate(),
             // Focus the next toplevel in the stack, pushing the current top to the back
             xkb.Keysym.F1 => {
+                // std.log.info("Key F1 pressed", .{});
                 if (server.toplevels.length() < 2) return true;
                 const toplevel: *Toplevel = @fieldParentPtr("link", server.toplevels.link.prev.?);
                 server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);

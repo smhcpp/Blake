@@ -53,33 +53,33 @@ pub const Keyboard = struct {
         // Translate libinput keycode -> xkbcommon
         const keycode = event.keycode + 8;
 
-        var buffer: [8]u8 = undefined;
-        const len = xkb.State.keyGetUtf8(wlr_keyboard.xkb_state.?, keycode, &buffer);
-        const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
+        // var buffer: [8]u8 = undefined;
+        // const len = xkb.State.keyGetUtf8(wlr_keyboard.xkb_state.?, keycode, &buffer);
+        // const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
 
         //added code for the printing all the keys
-        const symo = wlr_keyboard.xkb_state.?.keyGetOneSym(keycode);
+        // const symo = wlr_keyboard.xkb_state.?.keyGetOneSym(keycode);
         // const sym_name = xkb.Keymap.keyGetName(wlr_keyboard.xkb_state.?.getKeymap(), keycode);
-        const state_str = if (event.state == .pressed) "press" else "release";
+        // const state_str = if (event.state == .pressed) "press" else "release";
 
         // Log the key event
-        std.log.info("Key {s}: code={} sym={s} ({x})", .{
-            state_str,
-            keycode,
-            char,
-            @intFromEnum(symo),
-        });
+        // std.log.info("Key {s}: code={} sym={s} ({x})", .{
+        // state_str,
+        // keycode,
+        // char,
+        // @intFromEnum(symo),
+        // });
         // Here is the rest of the code from tinwl.
 
         var handled = false;
-        if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
-            for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-                if (keyboard.server.handleKeybind(sym)) {
-                    handled = true;
-                    break;
-                }
+        // if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
+        for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
+            if (keyboard.server.handleKeybind(sym)) {
+                handled = true;
+                break;
             }
         }
+        // }
 
         if (!handled) {
             keyboard.server.seat.setKeyboard(wlr_keyboard);
