@@ -4,13 +4,17 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const gpa = std.heap.c_allocator;
-
+const Tiling = @import("tiling.zig");
 const Server = @import("server.zig").Server;
+
 pub const Toplevel = struct {
     server: *Server,
     link: wl.list.Link = undefined,
     xdg_toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
+
+    wid: u32 = 0,
+    focused: bool = false,
 
     x: i32 = 0,
     y: i32 = 0,
@@ -33,11 +37,19 @@ pub const Toplevel = struct {
         const toplevel: *Toplevel = @fieldParentPtr("map", listener);
         toplevel.server.toplevels.prepend(toplevel);
         toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
+        Tiling.layoutFibonacci(toplevel);
     }
 
     pub fn handleUnmap(listener: *wl.Listener(void)) void {
         const toplevel: *Toplevel = @fieldParentPtr("unmap", listener);
+        var toplevels = toplevel.server.toplevels;
         toplevel.link.remove();
+
+        var it = toplevels.iterator(.reverse);
+        if (it.next()) |nexttoplevel| {
+            nexttoplevel.server.focusView(nexttoplevel, nexttoplevel.xdg_toplevel.base.surface);
+            Tiling.layoutFibonacci(nexttoplevel);
+        }
     }
 
     pub fn handleDestroy(listener: *wl.Listener(void)) void {
@@ -50,6 +62,7 @@ pub const Toplevel = struct {
         toplevel.request_move.link.remove();
         toplevel.request_resize.link.remove();
 
+        // Tiling.layoutFibonacci(toplevel);
         gpa.destroy(toplevel);
     }
 

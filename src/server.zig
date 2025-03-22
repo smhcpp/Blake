@@ -48,6 +48,8 @@ pub const Server = struct {
     grab_box: wlr.Box = undefined,
     resize_edges: wlr.Edges = .{},
 
+    workspace_num: u8 = 1,
+
     pub fn init(server: *Server) !void {
         const wl_server = try wl.Server.create();
         const loop = wl_server.getEventLoop();
@@ -373,49 +375,5 @@ pub const Server = struct {
     pub fn cursorFrame(listener: *wl.Listener(*wlr.Cursor), _: *wlr.Cursor) void {
         const server: *Server = @fieldParentPtr("cursor_frame", listener);
         server.seat.pointerNotifyFrame();
-    }
-
-    /// Assumes the modifier used for compositor keybinds is pressed
-    /// Returns true if the key was handled
-    pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
-        // std.log.info("handle Keybind pressed", .{});
-        switch (@intFromEnum(key)) {
-            // Exit the compositor
-
-            xkb.Keysym.Return => {
-                const cmd = "kitty";
-                var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, gpa);
-                var env_map = std.process.getEnvMap(gpa) catch |err| {
-                    std.log.err("Failed to spawn: {}", .{err});
-                    return false;
-                };
-                defer env_map.deinit();
-                env_map.put("WAYLAND_DISPLAY", server.socket) catch |err| {
-                    std.log.err("Failed to put the socket for the enviornment {}", .{err});
-                };
-                child.env_map = &env_map;
-                // try child.spawn();
-                // std.log.info("Key Enter pressed", .{});
-                // child.env_map = env_map_ptr;
-
-                // Set the environment variables
-                _ = child.spawn() catch |err| {
-                    std.log.err("Failed to spawn: {}", .{err});
-                    return false;
-                };
-                return true;
-            },
-
-            xkb.Keysym.Escape => server.wl_server.terminate(),
-            // Focus the next toplevel in the stack, pushing the current top to the back
-            xkb.Keysym.F1 => {
-                // std.log.info("Key F1 pressed", .{});
-                if (server.toplevels.length() < 2) return true;
-                const toplevel: *Toplevel = @fieldParentPtr("link", server.toplevels.link.prev.?);
-                server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
-            },
-            else => return false,
-        }
-        return true;
     }
 };

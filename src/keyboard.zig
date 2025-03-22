@@ -4,8 +4,9 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const gpa = std.heap.c_allocator;
-
+const Toplevel = @import("toplevel.zig").Toplevel;
 const Server = @import("server.zig").Server;
+
 pub const Keyboard = struct {
     server: *Server,
     link: wl.list.Link = undefined,
@@ -72,14 +73,14 @@ pub const Keyboard = struct {
         // Here is the rest of the code from tinwl.
 
         var handled = false;
-        // if (wlr_keyboard.getModifiers().alt and event.state == .pressed) {
-        for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-            if (keyboard.server.handleKeybind(sym)) {
-                handled = true;
-                break;
+        if (wlr_keyboard.getModifiers().logo and event.state == .pressed) {
+            for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
+                if (handleKeybind(keyboard.server, sym)) {
+                    handled = true;
+                    break;
+                }
             }
         }
-        // }
 
         if (!handled) {
             keyboard.server.seat.setKeyboard(wlr_keyboard);
@@ -95,3 +96,47 @@ pub const Keyboard = struct {
         gpa.destroy(keyboard);
     }
 };
+
+/// Assumes the modifier used for compositor keybinds is pressed
+/// Returns true if the key was handled
+pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
+    // std.log.info("handle Keybind pressed", .{});
+    switch (@intFromEnum(key)) {
+        // Exit the compositor
+
+        xkb.Keysym.Return => {
+            const cmd = "kitty";
+            var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, gpa);
+            var env_map = std.process.getEnvMap(gpa) catch |err| {
+                std.log.err("Failed to spawn: {}", .{err});
+                return false;
+            };
+            defer env_map.deinit();
+            env_map.put("WAYLAND_DISPLAY", server.socket) catch |err| {
+                std.log.err("Failed to put the socket for the enviornment {}", .{err});
+            };
+            child.env_map = &env_map;
+            // try child.spawn();
+            // std.log.info("Key Enter pressed", .{});
+            // child.env_map = env_map_ptr;
+
+            // Set the environment variables
+            _ = child.spawn() catch |err| {
+                std.log.err("Failed to spawn: {}", .{err});
+                return false;
+            };
+            return true;
+        },
+
+        xkb.Keysym.Escape => server.wl_server.terminate(),
+        // Focus the next toplevel in the stack, pushing the current top to the back
+        xkb.Keysym.F1 => {
+            // std.log.info("Key F1 pressed", .{});
+            if (server.toplevels.length() < 2) return true;
+            const toplevel: *Toplevel = @fieldParentPtr("link", server.toplevels.link.prev.?);
+            server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
+        },
+        else => return false,
+    }
+    return true;
+}
