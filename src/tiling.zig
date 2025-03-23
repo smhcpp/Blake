@@ -8,6 +8,40 @@ pub const Layout = struct {
     boxs: [15][4]f64, // 15: 5 different splits maximum for each workspace for now
 };
 
+pub fn sumSize(n: usize) usize {
+    var sum: usize = 0;
+    var i: usize = 1;
+    while (n >= i) : (i += 1) {
+        sum += i;
+    }
+    return sum;
+}
+
+pub fn refreshLayout(server: *Server, layout_idx: usize) void {
+    const num = server.toplevels.length();
+    if (num == 0) return;
+    const origin = sumSize(num - 1);
+    // const ending=sumSize(num);
+    const boxs = server.layouts.items[layout_idx].boxs;
+    var screen: wlr.Box = undefined;
+    server.output_layout.getBox(null, &screen);
+    const width: f64 = @floatFromInt(screen.width);
+    const height: f64 = @floatFromInt(screen.height);
+    var it = server.toplevels.iterator(.forward);
+    var i: usize = 0;
+    while (it.next()) |toplvl| {
+        const x_f: f64 = width * boxs[origin + i][0];
+        const y_f: f64 = height * boxs[origin + i][1];
+        const w_f: f64 = width * boxs[origin + i][2];
+        const h_f: f64 = height * boxs[origin + i][3];
+        toplvl.x = @intFromFloat(x_f);
+        toplvl.y = @intFromFloat(y_f);
+        _ = toplvl.xdg_toplevel.setSize(@intFromFloat(w_f), @intFromFloat(h_f));
+        toplvl.scene_tree.node.setPosition(toplvl.x, toplvl.y);
+        i += 1;
+    }
+}
+
 pub fn loadLayouts(server: *Server) !void {
     const allocator = std.heap.page_allocator;
     const home_dir = std.posix.getenv("HOME") orelse return error.MissingHomeDir;
