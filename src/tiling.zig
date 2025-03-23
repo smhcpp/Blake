@@ -3,55 +3,59 @@ const std = @import("std");
 const wlr = @import("wlroots");
 const Toplevel = @import("toplevel.zig").Toplevel;
 
-pub fn layoutFibonacci(topleveli: *Toplevel) void {
-    const server = topleveli.*.server;
-    const num = topleveli.*.server.toplevels.length();
-    if (num == 0) return;
-    var remaining: wlr.Box = undefined;
-    topleveli.*.server.output_layout.getBox(null, &remaining);
-    std.debug.print("width: {}, height:{}\n", .{ remaining.width, remaining.height });
-    var horizontal = true; // alternate splitting direction
+pub const Layout = struct {
+    name: []const u8,
+    boxs: [15][4]f64, // 15: 5 different splits maximum for each workspace for now
+};
 
-    // .forward, .reverse
-    var it = server.toplevels.iterator(.reverse);
-    var i: u32 = 0;
-    while (it.next()) |toplevel| {
-        if (i == num - 1) {
-            toplevel.x = remaining.x;
-            toplevel.y = remaining.y;
-            _ = toplevel.xdg_toplevel.setSize(remaining.width, remaining.height);
-        } else {
-            const phi = 2;
-            if (horizontal) {
-                const width_f: f32 = @floatFromInt(remaining.width);
-                const new_width: i32 = @intFromFloat(width_f / phi);
-                toplevel.x = remaining.x;
-                toplevel.y = remaining.y;
-                _ = toplevel.xdg_toplevel.setSize(new_width, remaining.height);
-                remaining.x += new_width;
-                remaining.width -= new_width;
-            } else {
-                const height_f: f32 = @floatFromInt(remaining.height);
-                const new_height: i32 = @intFromFloat(height_f / phi);
-                toplevel.x = remaining.x;
-                toplevel.y = remaining.y;
-                _ = toplevel.xdg_toplevel.setSize(remaining.width, new_height);
-                remaining.y += new_height;
-                remaining.height -= new_height;
+pub fn loadLayouts(server: *Server) !void {
+    const allocator = std.heap.page_allocator;
+    const home_dir = std.posix.getenv("HOME") orelse return error.MissingHomeDir;
+    const file_path = try std.fs.path.join(allocator, &.{ home_dir, ".config", "blake", "layouts.json" });
+    defer allocator.free(file_path);
+    var file = try std.fs.openFileAbsolute(file_path, .{});
+    defer file.close();
+    const buffer = try file.readToEndAlloc(allocator, 4096);
+    defer allocator.free(buffer);
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, buffer, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+
+    var it = obj.iterator();
+    while (it.next()) |entry| {
+        const tableKey = entry.key_ptr;
+        const tableValue = entry.value_ptr;
+        const outerArray = tableValue.array;
+
+        var layout = Layout{
+            .name = try allocator.dupe(u8, tableKey.*),
+            .boxs = .{.{0.0} ** 4} ** 15,
+        };
+        var i: usize = 0;
+        var l: usize = 0;
+        while (i < outerArray.items.len) : (i += 1) {
+            const outerSet = outerArray.items[i];
+            const innerArray = outerSet.array;
+            var j: usize = 0;
+            while (j < innerArray.items.len) : (j += 1) {
+                const innerSet = innerArray.items[j];
+                const quadruple = innerSet.array;
+                var k: usize = 0;
+                while (k < quadruple.items.len) : (k += 1) {
+                    const numVal = quadruple.items[k];
+                    const num = switch (numVal) {
+                        .float => numVal.float,
+                        else => {
+                            std.debug.print("All values for proportionality must be of the form 1.0, 0.0, and values in between them.\n", .{});
+                            continue;
+                        },
+                    };
+                    layout.boxs[l][k] = num;
+                }
+                l += 1;
             }
-            horizontal = !horizontal;
         }
-        toplevel.scene_tree.node.setPosition(toplevel.x, toplevel.y);
-        i += 1;
-    }
-}
-
-pub fn sortApps(server: *Server) void {
-    //i should make this addaptable to workspaces later. now, it only corresponds to one workspace.
-    var it = server.*.toplevels.iterator(.forward);
-    var i: u32 = 0;
-    while (it.next()) |toplvl| {
-        toplvl.wid = i;
-        i += 1;
+        try server.layouts.append(layout);
     }
 }

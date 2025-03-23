@@ -9,7 +9,8 @@ const Toplevel = @import("toplevel.zig").Toplevel;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const Output = @import("output.zig").Output;
 const Popup = @import("popup.zig").Popup;
-
+// const Layout = @import("tiling.zig").Layout;
+const Tiling = @import("tiling.zig");
 pub const Server = struct {
     wl_server: *wl.Server,
     backend: *wlr.Backend,
@@ -26,6 +27,7 @@ pub const Server = struct {
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevel),
     new_xdg_popup: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopup),
     toplevels: wl.list.Head(Toplevel, .link) = undefined,
+    layouts: std.ArrayList(Tiling.Layout) = undefined,
 
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
@@ -51,6 +53,8 @@ pub const Server = struct {
     workspace_num: u8 = 1,
 
     pub fn init(server: *Server) !void {
+        server.layouts = std.ArrayList(Tiling.Layout).init(std.heap.page_allocator);
+        try Tiling.loadLayouts(server);
         const wl_server = try wl.Server.create();
         const loop = wl_server.getEventLoop();
         const backend = try wlr.Backend.autocreate(loop, null);
@@ -101,6 +105,9 @@ pub const Server = struct {
         server.wl_server.destroyClients();
         server.backend.destroy();
         server.wl_server.destroy();
+        // server.layouts.deinit();
+        // similar thing for toplevel and all other things
+        // deinit of keyboards, outputs, inputs, ...
     }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {

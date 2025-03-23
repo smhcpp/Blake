@@ -37,7 +37,7 @@ pub const Toplevel = struct {
         const toplevel: *Toplevel = @fieldParentPtr("map", listener);
         toplevel.server.toplevels.prepend(toplevel);
         toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
-        Tiling.layoutFibonacci(toplevel);
+        // Tiling.layoutFibonacci(toplevel);
     }
 
     pub fn handleUnmap(listener: *wl.Listener(void)) void {
@@ -48,7 +48,7 @@ pub const Toplevel = struct {
         var it = toplevels.iterator(.reverse);
         if (it.next()) |nexttoplevel| {
             nexttoplevel.server.focusView(nexttoplevel, nexttoplevel.xdg_toplevel.base.surface);
-            Tiling.layoutFibonacci(nexttoplevel);
+            // Tiling.layoutFibonacci(nexttoplevel);
         }
     }
 
