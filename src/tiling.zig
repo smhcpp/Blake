@@ -5,7 +5,9 @@ const Toplevel = @import("toplevel.zig").Toplevel;
 
 pub const Layout = struct {
     name: []const u8,
-    boxs: [15][4]f64, // 15: 5 different splits maximum for each workspace for now
+    size: usize,
+    // boxs: [21][4]f64, // 15: 5 different splits maximum for each workspace for now
+    boxs: std.ArrayList([4]f64),
 };
 
 pub fn sumSize(n: usize) usize {
@@ -21,8 +23,7 @@ pub fn refreshLayout(server: *Server, layout_idx: usize) void {
     const num = server.toplevels.length();
     if (num == 0) return;
     const origin = sumSize(num - 1);
-    // const ending=sumSize(num);
-    const boxs = server.layouts.items[layout_idx].boxs;
+    const boxs = server.layouts.items[layout_idx].boxs.items;
     var screen: wlr.Box = undefined;
     server.output_layout.getBox(null, &screen);
     const width: f64 = @floatFromInt(screen.width);
@@ -64,7 +65,9 @@ pub fn loadLayouts(server: *Server) !void {
 
         var layout = Layout{
             .name = try allocator.dupe(u8, tableKey.*),
-            .boxs = .{.{0.0} ** 4} ** 15,
+            // .boxs = .{.{0.0} ** 4} ** 21,
+            .boxs = std.ArrayList([4]f64).init(std.heap.page_allocator),
+            .size = outerArray.items.len,
         };
         var i: usize = 0;
         var l: usize = 0;
@@ -76,6 +79,7 @@ pub fn loadLayouts(server: *Server) !void {
                 const innerSet = innerArray.items[j];
                 const quadruple = innerSet.array;
                 var k: usize = 0;
+                var arr: [4]f64 = .{ 0, 0, 0, 0 };
                 while (k < quadruple.items.len) : (k += 1) {
                     const numVal = quadruple.items[k];
                     const num = switch (numVal) {
@@ -85,11 +89,14 @@ pub fn loadLayouts(server: *Server) !void {
                             continue;
                         },
                     };
-                    layout.boxs[l][k] = num;
+                    arr[k] = num;
+                    // layout.boxs[l][k] = num;
                 }
+                try layout.boxs.append(arr);
                 l += 1;
             }
         }
+        std.debug.print("here is the boxs: {any}\n", .{layout.boxs.items});
         try server.layouts.append(layout);
     }
 }
