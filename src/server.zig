@@ -27,11 +27,10 @@ pub const Server = struct {
     xdg_shell: *wlr.XdgShell,
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevel),
     new_xdg_popup: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopup),
-    // toplevels: wl.list.Head(Toplevel, .link) = undefined,
     layouts: std.ArrayList(Tiling.Layout) = undefined,
     workspaces: std.ArrayList(Workspace) = undefined,
-    workspace_num: u8 = 1,
-    workspace_cur: u8 = 0,
+    workspace_num: usize = undefined,
+    workspace_cur: usize = undefined,
 
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
@@ -55,21 +54,24 @@ pub const Server = struct {
     resize_edges: wlr.Edges = .{},
 
     pub fn init(server: *Server) !void {
+        server.workspace_num = 1;
+        server.workspace_cur = 0;
         server.layouts = std.ArrayList(Tiling.Layout).init(std.heap.page_allocator);
         try Tiling.loadLayouts(server);
 
         server.workspaces = std.ArrayList(Workspace).init(std.heap.page_allocator);
-        var i: u8 = 0;
-        while (i < server.workspace_num) : (i += 1) {
-            const w = Workspace{
-                .id = @as(usize, i),
-                .toplevels = std.ArrayList(*Toplevel).init(std.heap.page_allocator),
-                // .toplevels = wl.list.Head(Toplevel, .link),
-                .name = try std.fmt.allocPrint(std.heap.page_allocator, "{}", .{i + 1}),
+        var wi: usize = 0;
+        while (wi < server.workspace_num) {
+            var w = Workspace{
+                .id = wi,
+                .name = std.fmt.allocPrint(std.heap.page_allocator, "{}", .{wi + 1}) catch "w",
+                .toplevels = undefined,
                 .layout_cur = 0,
+                .toplvl_cur = 0,
             };
-            // w.toplevels.init();
+            w.toplevels = std.ArrayList(*Toplevel).init(std.heap.page_allocator);
             try server.workspaces.append(w);
+            wi += 1;
         }
 
         const wl_server = try wl.Server.create();
@@ -102,7 +104,6 @@ pub const Server = struct {
 
         server.xdg_shell.events.new_toplevel.add(&server.new_xdg_toplevel);
         server.xdg_shell.events.new_popup.add(&server.new_xdg_popup);
-        // server.toplevels.init();
 
         server.backend.events.new_input.add(&server.new_input);
         server.seat.events.request_set_cursor.add(&server.request_set_cursor);
@@ -245,14 +246,14 @@ pub const Server = struct {
         }
 
         toplevel.scene_tree.node.raiseToTop();
-        // toplevel.link.remove();
-        // Remove from current position if exists
+
         const ws = &server.workspaces.items[server.workspace_cur];
         if (std.mem.indexOfScalar(*Toplevel, ws.toplevels.items, toplevel)) |idx| {
             _ = ws.toplevels.swapRemove(idx);
         }
 
         try server.workspaces.items[server.workspace_cur].toplevels.insert(0, toplevel);
+        server.workspaces.items[server.workspace_cur].toplvl_cur = 0;
 
         _ = toplevel.xdg_toplevel.setActivated(true);
 
@@ -279,6 +280,31 @@ pub const Server = struct {
             .pointer = true,
             .keyboard = server.keyboards.length() > 0,
         });
+    }
+
+    pub fn switchWS(server: *Server, workspace_pre: usize) void {
+        // var wi: usize = 0;
+        // while (wi < server.workspaces.items.len) : (wi += 1) {
+        // if (wi == server.workspace_cur) continue;
+        // for (server.workspaces.items[wi].toplevels.items) |toplvl| {
+        // toplvl.scene_tree.node.setEnabled(false);
+        // }
+        // }
+        for (server.workspaces.items[workspace_pre].toplevels.items) |toplvl| {
+            toplvl.scene_tree.node.setEnabled(false); // show window
+        }
+        for (server.workspaces.items[server.workspace_cur].toplevels.items) |toplvl| {
+            toplvl.scene_tree.node.setEnabled(true); // show window
+        }
+
+        if (server.workspaces.items[server.workspace_cur].toplevels.items.len > 0) {
+            const toplvl_cur = server.workspaces.items[server.workspace_cur].toplvl_cur;
+            const toplvl = server.workspaces.items[server.workspace_cur].toplevels.items[toplvl_cur];
+            toplvl.server.focusView(toplvl, toplvl.xdg_toplevel.base.surface) catch |e| {
+                std.log.err("focusView failed to work: {}", .{e});
+            };
+        }
+        Tiling.refreshLayout(server);
     }
 
     pub fn requestSetCursor(

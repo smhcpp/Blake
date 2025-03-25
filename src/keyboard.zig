@@ -128,6 +128,15 @@ pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
             return true;
         },
 
+        //giving cycling effect to super+tab.
+        xkb.Keysym.Tab => {
+            const pre = server.workspace_cur;
+            server.workspace_cur += 1;
+            // server.workspace_num += 1;
+            if (server.workspace_cur >= server.workspace_num) server.workspace_cur -= server.workspace_num;
+            server.switchWS(pre);
+        },
+
         xkb.Keysym.Escape => server.wl_server.terminate(),
         // Focus the next toplevel in the stack, pushing the current top to the back
         // xkb.Keysym.F1 => {

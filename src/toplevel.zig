@@ -13,8 +13,7 @@ pub const Toplevel = struct {
     xdg_toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
 
-    wid: u32 = 0,
-    focused: bool = false,
+    // wid: usize = 0,
 
     x: i32 = 0,
     y: i32 = 0,
@@ -35,15 +34,42 @@ pub const Toplevel = struct {
 
     pub fn handleMap(listener: *wl.Listener(void)) void {
         const toplevel: *Toplevel = @fieldParentPtr("map", listener);
-        toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.insert(0, toplevel) catch |e| {
-            std.log.err("toplevel Insertion failed: {}", .{e});
-        };
+        const layout_cur = toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur;
+        const toplvl_num = toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.items.len;
+        if (toplvl_num < toplevel.server.layouts.items[layout_cur].size) {
+            // if number of toplevels in the current workspace is less than the max of the layout
+            // in this workspace.
+            toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.insert(0, toplevel) catch |e| {
+                std.log.err("toplevel Insertion failed: {}", .{e});
+            };
+        } else {
+            //create a new workspace, add the workspacenumber, refresh the workspace to new one.
+            var w = Workspace{
+                .id = toplevel.server.workspaces.items.len,
+                .toplevels = std.ArrayList(*Toplevel).init(std.heap.page_allocator),
+                .name = std.fmt.allocPrint(std.heap.page_allocator, "{}", .{toplevel.server.workspaces.items.len}) catch "err",
+                .layout_cur = toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur,
+                .toplvl_cur = undefined,
+            };
+            w.toplevels.insert(0, toplevel) catch |e| {
+                std.log.err("toplevel Insertion failed: {}", .{e});
+            };
+            w.toplvl_cur = 0;
+            toplevel.server.workspaces.append(w) catch |e| {
+                std.log.err("toplevel Insertion failed: {}", .{e});
+            };
+            for (toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.items) |toplvl| {
+                toplvl.scene_tree.node.setEnabled(false);
+            }
+            toplevel.server.workspace_cur = toplevel.server.workspaces.items.len - 1;
+            toplevel.server.workspace_num += 1;
+        }
         toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface) catch |e| {
             std.log.err("focusView failed to work: {}", .{e});
         };
         // Tiling.layoutFibonacci(toplevel);
 
-        Tiling.refreshLayout(toplevel.server, toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur);
+        Tiling.refreshLayout(toplevel.server);
     }
 
     pub fn handleUnmap(listener: *wl.Listener(void)) void {
@@ -63,7 +89,7 @@ pub const Toplevel = struct {
             };
             // Tiling.refreshLayout(nexttoplevel.server, 0);
             // Tiling.layoutFibonacci(nexttoplevel);
-            Tiling.refreshLayout(nexttoplevel.server, nexttoplevel.server.workspaces.items[nexttoplevel.server.workspace_cur].layout_cur);
+            Tiling.refreshLayout(nexttoplevel.server);
         }
     }
 
@@ -124,4 +150,5 @@ pub const Workspace = struct {
     toplevels: std.ArrayList(*Toplevel),
     // toplevels: wl.list.Head(Toplevel, .link),
     layout_cur: usize,
+    toplvl_cur: usize,
 };

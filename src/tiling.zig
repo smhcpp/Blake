@@ -18,11 +18,11 @@ pub fn sumSize(n: usize) usize {
     return sum;
 }
 
-pub fn refreshLayout(server: *Server, layout_idx: usize) void {
+pub fn refreshLayout(server: *Server) void {
     const num = server.workspaces.items[server.workspace_cur].toplevels.items.len;
     if (num == 0) return;
     const origin = sumSize(num - 1);
-    const boxs = server.layouts.items[layout_idx].boxs.items;
+    const boxs = server.layouts.items[server.workspaces.items[server.workspace_cur].layout_cur].boxs.items;
     var screen: wlr.Box = undefined;
     server.output_layout.getBox(null, &screen);
     const width: f64 = @floatFromInt(screen.width);
