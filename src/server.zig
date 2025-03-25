@@ -119,13 +119,41 @@ pub const Server = struct {
         server.cursor.events.frame.add(&server.cursor_frame);
     }
 
+    // pub fn deinit(server: *Server) void {
+    // server.wl_server.destroyClients();
+    // server.backend.destroy();
+    // server.wl_server.destroy();
+    // server.layouts.deinit();
+    // similar thing for toplevel and all other things
+    // deinit of keyboards, outputs, inputs, ...
+    // }
+
     pub fn deinit(server: *Server) void {
-        server.wl_server.destroyClients();
+        // Cleanup workspaces
+        for (server.workspaces.items) |*ws| {
+            for (ws.toplevels.items) |toplevel| {
+                // Destroy scene tree node
+                toplevel.scene_tree.node.destroy();
+                // Free the Toplevel struct itself
+                gpa.destroy(toplevel);
+            }
+            ws.toplevels.deinit();
+            std.heap.page_allocator.free(ws.name);
+        }
+        server.workspaces.deinit();
+
+        // Cleanup Wayland resources in reverse creation order
+        server.cursor_mgr.destroy();
+        server.cursor.destroy();
+        server.seat.destroy();
+        // server.xdg_shell.destroy();
+        // server.scene_output_layout.destroy();
+        server.output_layout.destroy();
+        // server.scene.deinit();
+        server.allocator.destroy();
+        server.renderer.destroy();
         server.backend.destroy();
         server.wl_server.destroy();
-        // server.layouts.deinit();
-        // similar thing for toplevel and all other things
-        // deinit of keyboards, outputs, inputs, ...
     }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {

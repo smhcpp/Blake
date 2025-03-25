@@ -9,11 +9,8 @@ const Server = @import("server.zig").Server;
 
 pub const Toplevel = struct {
     server: *Server,
-    // link: wl.list.Link = undefined,
     xdg_toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
-
-    // wid: usize = 0,
 
     x: i32 = 0,
     y: i32 = 0,
@@ -67,7 +64,6 @@ pub const Toplevel = struct {
         toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface) catch |e| {
             std.log.err("focusView failed to work: {}", .{e});
         };
-        // Tiling.layoutFibonacci(toplevel);
 
         Tiling.refreshLayout(toplevel.server);
     }
@@ -75,20 +71,17 @@ pub const Toplevel = struct {
     pub fn handleUnmap(listener: *wl.Listener(void)) void {
         const toplevel: *Toplevel = @fieldParentPtr("unmap", listener);
         const toplevels = toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels;
-        // toplevel.link.remove();
-        // Remove from current position if exists
+
         const ws = &toplevel.server.workspaces.items[toplevel.server.workspace_cur];
         if (std.mem.indexOfScalar(*Toplevel, ws.toplevels.items, toplevel)) |idx| {
             _ = ws.toplevels.swapRemove(idx);
         }
-        // var it = toplevels.iterator(.reverse);
+
         if (toplevels.items.len > 0) {
             const nexttoplevel = toplevels.items[0];
             nexttoplevel.server.focusView(nexttoplevel, nexttoplevel.xdg_toplevel.base.surface) catch |e| {
                 std.log.err("focusView failed to work: {}", .{e});
             };
-            // Tiling.refreshLayout(nexttoplevel.server, 0);
-            // Tiling.layoutFibonacci(nexttoplevel);
             Tiling.refreshLayout(nexttoplevel.server);
         }
     }
@@ -148,7 +141,6 @@ pub const Workspace = struct {
     id: usize,
     name: []const u8,
     toplevels: std.ArrayList(*Toplevel),
-    // toplevels: wl.list.Head(Toplevel, .link),
     layout_cur: usize,
     toplvl_cur: usize,
 };
