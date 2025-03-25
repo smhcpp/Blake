@@ -6,7 +6,6 @@ const Toplevel = @import("toplevel.zig").Toplevel;
 pub const Layout = struct {
     name: []const u8,
     size: usize,
-    // boxs: [21][4]f64, // 15: 5 different splits maximum for each workspace for now
     boxs: std.ArrayList([4]f64),
 };
 
@@ -20,7 +19,7 @@ pub fn sumSize(n: usize) usize {
 }
 
 pub fn refreshLayout(server: *Server, layout_idx: usize) void {
-    const num = server.toplevels.length();
+    const num = server.workspaces.items[server.workspace_cur].toplevels.items.len;
     if (num == 0) return;
     const origin = sumSize(num - 1);
     const boxs = server.layouts.items[layout_idx].boxs.items;
@@ -28,9 +27,8 @@ pub fn refreshLayout(server: *Server, layout_idx: usize) void {
     server.output_layout.getBox(null, &screen);
     const width: f64 = @floatFromInt(screen.width);
     const height: f64 = @floatFromInt(screen.height);
-    var it = server.toplevels.iterator(.forward);
     var i: usize = 0;
-    while (it.next()) |toplvl| {
+    for (server.workspaces.items[server.workspace_cur].toplevels.items) |toplvl| {
         const x_f: f64 = width * boxs[origin + i][0];
         const y_f: f64 = height * boxs[origin + i][1];
         const w_f: f64 = width * boxs[origin + i][2];
@@ -65,7 +63,6 @@ pub fn loadLayouts(server: *Server) !void {
 
         var layout = Layout{
             .name = try allocator.dupe(u8, tableKey.*),
-            // .boxs = .{.{0.0} ** 4} ** 21,
             .boxs = std.ArrayList([4]f64).init(std.heap.page_allocator),
             .size = outerArray.items.len,
         };
@@ -90,13 +87,12 @@ pub fn loadLayouts(server: *Server) !void {
                         },
                     };
                     arr[k] = num;
-                    // layout.boxs[l][k] = num;
                 }
                 try layout.boxs.append(arr);
                 l += 1;
             }
         }
-        std.debug.print("here is the boxs: {any}\n", .{layout.boxs.items});
+        // std.debug.print("here is the boxs: {any}\n", .{layout.boxs.items});
         try server.layouts.append(layout);
     }
 }

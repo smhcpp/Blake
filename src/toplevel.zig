@@ -9,7 +9,7 @@ const Server = @import("server.zig").Server;
 
 pub const Toplevel = struct {
     server: *Server,
-    link: wl.list.Link = undefined,
+    // link: wl.list.Link = undefined,
     xdg_toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
 
@@ -35,23 +35,35 @@ pub const Toplevel = struct {
 
     pub fn handleMap(listener: *wl.Listener(void)) void {
         const toplevel: *Toplevel = @fieldParentPtr("map", listener);
-        toplevel.server.toplevels.prepend(toplevel);
-        toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
+        toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.insert(0, toplevel) catch |e| {
+            std.log.err("toplevel Insertion failed: {}", .{e});
+        };
+        toplevel.server.focusView(toplevel, toplevel.xdg_toplevel.base.surface) catch |e| {
+            std.log.err("focusView failed to work: {}", .{e});
+        };
         // Tiling.layoutFibonacci(toplevel);
 
-        Tiling.refreshLayout(toplevel.server, 0);
+        Tiling.refreshLayout(toplevel.server, toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur);
     }
 
     pub fn handleUnmap(listener: *wl.Listener(void)) void {
         const toplevel: *Toplevel = @fieldParentPtr("unmap", listener);
-        var toplevels = toplevel.server.toplevels;
-        toplevel.link.remove();
-
-        var it = toplevels.iterator(.reverse);
-        if (it.next()) |nexttoplevel| {
-            nexttoplevel.server.focusView(nexttoplevel, nexttoplevel.xdg_toplevel.base.surface);
-            Tiling.refreshLayout(nexttoplevel.server, 0);
+        const toplevels = toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels;
+        // toplevel.link.remove();
+        // Remove from current position if exists
+        const ws = &toplevel.server.workspaces.items[toplevel.server.workspace_cur];
+        if (std.mem.indexOfScalar(*Toplevel, ws.toplevels.items, toplevel)) |idx| {
+            _ = ws.toplevels.swapRemove(idx);
+        }
+        // var it = toplevels.iterator(.reverse);
+        if (toplevels.items.len > 0) {
+            const nexttoplevel = toplevels.items[0];
+            nexttoplevel.server.focusView(nexttoplevel, nexttoplevel.xdg_toplevel.base.surface) catch |e| {
+                std.log.err("focusView failed to work: {}", .{e});
+            };
+            // Tiling.refreshLayout(nexttoplevel.server, 0);
             // Tiling.layoutFibonacci(nexttoplevel);
+            Tiling.refreshLayout(nexttoplevel.server, nexttoplevel.server.workspaces.items[nexttoplevel.server.workspace_cur].layout_cur);
         }
     }
 
@@ -104,4 +116,12 @@ pub const Toplevel = struct {
         server.grab_box.x += toplevel.x;
         server.grab_box.y += toplevel.y;
     }
+};
+
+pub const Workspace = struct {
+    id: usize,
+    name: []const u8,
+    toplevels: std.ArrayList(*Toplevel),
+    // toplevels: wl.list.Head(Toplevel, .link),
+    layout_cur: usize,
 };

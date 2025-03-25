@@ -32,5 +32,5 @@ pub fn main() anyerror!void {
     std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{server.socket});
     server.wl_server.run();
 
-    std.debug.print("\n here is the first layout: {s}, {any}\n\n", .{ server.layouts.items[0].name, server.layouts.items[0].boxs });
+    // std.debug.print("\n here is the first layout: {s}, {any}\n\n", .{ server.layouts.items[0].name, server.layouts.items[0].boxs });
 }

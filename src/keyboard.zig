@@ -130,12 +130,12 @@ pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
 
         xkb.Keysym.Escape => server.wl_server.terminate(),
         // Focus the next toplevel in the stack, pushing the current top to the back
-        xkb.Keysym.F1 => {
-            // std.log.info("Key F1 pressed", .{});
-            if (server.toplevels.length() < 2) return true;
-            const toplevel: *Toplevel = @fieldParentPtr("link", server.toplevels.link.prev.?);
-            server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
-        },
+        // xkb.Keysym.F1 => {
+        // std.log.info("Key F1 pressed", .{});
+        // if (server.workspaces.items[server.workspace_cur].toplevels.items.len < 2) return true;
+        // const toplevel: *Toplevel = @fieldParentPtr("link", server.workspaces.items[server.workspace_cur].toplevels.link.prev.?);
+        // server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
+        // },
         else => return false,
     }
     return true;
