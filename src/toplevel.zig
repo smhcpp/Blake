@@ -33,7 +33,7 @@ pub const Toplevel = struct {
         const toplevel: *Toplevel = @fieldParentPtr("map", listener);
         const layout_cur = toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur;
         const toplvl_num = toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.items.len;
-        if (toplvl_num < toplevel.server.layouts.items[layout_cur].size) {
+        if (toplvl_num < toplevel.server.config.layouts.items[layout_cur].size) {
             // if number of toplevels in the current workspace is less than the max of the layout
             // in this workspace.
             toplevel.server.workspaces.items[toplevel.server.workspace_cur].toplevels.insert(0, toplevel) catch |e| {
@@ -43,8 +43,8 @@ pub const Toplevel = struct {
             //create a new workspace, add the workspacenumber, refresh the workspace to new one.
             var w = Workspace{
                 .id = toplevel.server.workspaces.items.len,
-                .toplevels = std.ArrayList(*Toplevel).init(std.heap.page_allocator),
-                .name = std.fmt.allocPrint(std.heap.page_allocator, "{}", .{toplevel.server.workspaces.items.len}) catch "err",
+                .toplevels = std.ArrayList(*Toplevel).init(toplevel.server.alloc),
+                .name = std.fmt.allocPrint(toplevel.server.alloc, "{}", .{toplevel.server.workspaces.items.len}) catch "err",
                 .layout_cur = toplevel.server.workspaces.items[toplevel.server.workspace_cur].layout_cur,
                 .toplvl_cur = undefined,
             };

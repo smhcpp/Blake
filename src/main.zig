@@ -3,7 +3,7 @@ const posix = std.posix;
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
-const gpa = std.heap.c_allocator;
+// const gpa = std.heap.c_allocator;
 
 const Server = @import("server.zig").Server;
 
@@ -19,8 +19,8 @@ pub fn main() anyerror!void {
 
     if (std.os.argv.len >= 2) {
         const cmd = std.mem.span(std.os.argv[1]);
-        var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, gpa);
-        var env_map = try std.process.getEnvMap(gpa);
+        var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, server.alloc);
+        var env_map = try std.process.getEnvMap(server.alloc);
         defer env_map.deinit();
         try env_map.put("WAYLAND_DISPLAY", server.socket);
         child.env_map = &env_map;

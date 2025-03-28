@@ -16,7 +16,7 @@ pub const Output = struct {
 
     // The wlr.Output should be destroyed by the caller on failure to trigger cleanup.
     pub fn create(server: *Server, wlr_output: *wlr.Output) !void {
-        const output = try gpa.create(Output);
+        const output = try server.alloc.create(Output);
 
         output.* = .{
             .server = server,

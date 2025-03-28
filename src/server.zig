@@ -10,7 +10,7 @@ const Workspace = @import("toplevel.zig").Workspace;
 const Keyboard = @import("keyboard.zig").Keyboard;
 const Output = @import("output.zig").Output;
 const Popup = @import("popup.zig").Popup;
-// const Layout = @import("tiling.zig").Layout;
+const config = @import("config.zig");
 const Tiling = @import("tiling.zig");
 pub const Server = struct {
     wl_server: *wl.Server,
@@ -18,6 +18,7 @@ pub const Server = struct {
     socket: []const u8 = undefined,
     renderer: *wlr.Renderer,
     allocator: *wlr.Allocator,
+    alloc: std.mem.Allocator = std.heap.c_allocator,
     scene: *wlr.Scene,
 
     output_layout: *wlr.OutputLayout,
@@ -27,7 +28,7 @@ pub const Server = struct {
     xdg_shell: *wlr.XdgShell,
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevel),
     new_xdg_popup: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopup),
-    layouts: std.ArrayList(Tiling.Layout) = undefined,
+    config: config.Config,
     workspaces: std.ArrayList(Workspace) = undefined,
     workspace_num: usize = undefined,
     workspace_cur: usize = undefined,
@@ -54,25 +55,9 @@ pub const Server = struct {
     resize_edges: wlr.Edges = .{},
 
     pub fn init(server: *Server) !void {
-        server.workspace_num = 1;
-        server.workspace_cur = 0;
-        server.layouts = std.ArrayList(Tiling.Layout).init(std.heap.page_allocator);
-        try Tiling.loadLayouts(server);
-
-        server.workspaces = std.ArrayList(Workspace).init(std.heap.page_allocator);
-        var wi: usize = 0;
-        while (wi < server.workspace_num) {
-            var w = Workspace{
-                .id = wi,
-                .name = std.fmt.allocPrint(std.heap.page_allocator, "{}", .{wi + 1}) catch "w",
-                .toplevels = undefined,
-                .layout_cur = 0,
-                .toplvl_cur = 0,
-            };
-            w.toplevels = std.ArrayList(*Toplevel).init(std.heap.page_allocator);
-            try server.workspaces.append(w);
-            wi += 1;
-        }
+        const conf = config.Config{
+            .layouts = std.ArrayList(config.Layout).init(server.alloc),
+        };
 
         const wl_server = try wl.Server.create();
         const loop = wl_server.getEventLoop();
@@ -81,6 +66,7 @@ pub const Server = struct {
         const output_layout = try wlr.OutputLayout.create(wl_server);
         const scene = try wlr.Scene.create();
         server.* = .{
+            .config = conf,
             .wl_server = wl_server,
             .backend = backend,
             .renderer = renderer,
@@ -93,6 +79,24 @@ pub const Server = struct {
             .cursor = try wlr.Cursor.create(),
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
+        server.workspace_num = 1;
+        server.workspace_cur = 0;
+
+        server.config = try config.loadConfig(server.alloc);
+        server.workspaces = std.ArrayList(Workspace).init(server.alloc);
+        var wi: usize = 0;
+        while (wi < server.workspace_num) {
+            var w = Workspace{
+                .id = wi,
+                .name = std.fmt.allocPrint(server.alloc, "{}", .{wi + 1}) catch "w",
+                .toplevels = undefined,
+                .layout_cur = 0,
+                .toplvl_cur = 0,
+            };
+            w.toplevels = std.ArrayList(*Toplevel).init(server.alloc);
+            try server.workspaces.append(w);
+            wi += 1;
+        }
 
         try server.renderer.initServer(wl_server);
 
@@ -119,30 +123,17 @@ pub const Server = struct {
         server.cursor.events.frame.add(&server.cursor_frame);
     }
 
-    // pub fn deinit(server: *Server) void {
-    // server.wl_server.destroyClients();
-    // server.backend.destroy();
-    // server.wl_server.destroy();
-    // server.layouts.deinit();
-    // similar thing for toplevel and all other things
-    // deinit of keyboards, outputs, inputs, ...
-    // }
-
     pub fn deinit(server: *Server) void {
-        // Cleanup workspaces
         for (server.workspaces.items) |*ws| {
             for (ws.toplevels.items) |toplevel| {
-                // Destroy scene tree node
                 toplevel.scene_tree.node.destroy();
-                // Free the Toplevel struct itself
                 gpa.destroy(toplevel);
             }
             ws.toplevels.deinit();
-            std.heap.page_allocator.free(ws.name);
+            server.alloc.free(ws.name);
         }
         server.workspaces.deinit();
 
-        // Cleanup Wayland resources in reverse creation order
         server.cursor_mgr.destroy();
         server.cursor.destroy();
         server.seat.destroy();

@@ -17,8 +17,8 @@ pub const Keyboard = struct {
     destroy: wl.Listener(void) = .init(handleDestroy),
 
     pub fn create(server: *Server, device: *wlr.InputDevice) !void {
-        const keyboard = try gpa.create(Keyboard);
-        errdefer gpa.destroy(keyboard);
+        const keyboard = try server.alloc.create(Keyboard);
+        errdefer server.alloc.destroy(keyboard);
 
         keyboard.* = .{
             .server = server,
@@ -106,8 +106,8 @@ pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
 
         xkb.Keysym.Return => {
             const cmd = "kitty";
-            var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, gpa);
-            var env_map = std.process.getEnvMap(gpa) catch |err| {
+            var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, server.alloc);
+            var env_map = std.process.getEnvMap(server.alloc) catch |err| {
                 std.log.err("Failed to spawn: {}", .{err});
                 return false;
             };
