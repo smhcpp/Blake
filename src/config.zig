@@ -6,10 +6,28 @@ pub const ConfigError = error{
     KeymapNotEnoughParams,
     LayoutNotEnoughParams,
     MissingHomeDir,
+    WrongMode,
+};
+
+pub const Mode = enum { n, i, c };
+
+pub fn getMode(char: u8) !Mode {
+    if (char == 'n') return Mode.n;
+    if (char == 'i') return Mode.i;
+    if (char == 'c') return Mode.c;
+    return ConfigError.WrongMode;
+}
+
+pub const AppMessage = struct {
+    names: std.ArrayList([]const u8),
+    mode: Mode,
+    key: []const u8,
 };
 
 pub const Config = struct {
     layouts: std.ArrayList(Layout),
+    config_map: std.StringHashMap([]const u8),
+    pass_map: std.StringHashMap(AppMessage),
 };
 
 pub const Layout = struct {
@@ -54,7 +72,7 @@ fn splitCmds(allocator: std.mem.Allocator, s: []const u8, char: u8) std.ArrayLis
     // catch the last statement for the case char!=';'
     const cmd = cur.toOwnedSlice() catch "";
     if (cmd.len > 0) {
-        std.debug.print("cmd: {s}\n", .{cmd});
+        // std.debug.print("cmd: {s}\n", .{cmd});
         cmds.append(cmd) catch |e| {
             std.debug.print("error: {}", .{e});
         };
@@ -97,6 +115,8 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
     var lines = std.mem.splitScalar(u8, input, '\n');
     var config = Config{
         .layouts = std.ArrayList(Layout).init(allocator),
+        .config_map = std.StringHashMap([]const u8).init(allocator),
+        .pass_map = std.StringHashMap(AppMessage).init(allocator),
     };
     var joined_commands = std.ArrayList(u8).init(allocator);
     defer joined_commands.deinit();
@@ -121,7 +141,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
 
     for (cmds.items) |cmd| {
         if (cmd.len == 0) continue;
-        const keywords: [3][]const u8 = .{ "loadLayout", "set", "setKey" };
+        const keywords: [4][]const u8 = .{ "loadLayout", "act", "config", "pass" };
         for (keywords, 0..) |keyword, i| {
             if (std.mem.startsWith(u8, cmd, keyword)) {
                 const slice = cmd[keyword.len..cmd.len];
@@ -131,14 +151,56 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                         const layout_slice = trimmed_slice[1 .. trimmed_slice.len - 1];
                         const layout_toks = splitLayoutCmd(allocator, layout_slice);
                         defer layout_toks.deinit();
-                        std.debug.print("name: {s}\n", .{layout_toks.items[0]});
                         const layout = try parseLayout(allocator, layout_toks.items[1], layout_toks.items[0]);
                         try config.layouts.append(layout);
-                        std.debug.print("array: {any}\n", .{layout.boxs.items});
                     },
                     1 => {
                         const set_parts = splitCmds(allocator, trimmed_slice[1 .. trimmed_slice.len - 1], ',');
-                        std.debug.print("set: {any}\n", .{set_parts.items});
+                        if (set_parts.items.len == 3) {
+                            parseSet(allocator, set_parts.items[2]) catch |e| {
+                                std.debug.print("parseKeymap: {}", .{e});
+                            };
+                        } else {
+                            std.debug.print("Config file set function requires 3 parameters: {s}", .{slice});
+                        }
+                    },
+                    2 => {
+                        var conf_toks = std.mem.splitScalar(u8, trimmed_slice[1 .. trimmed_slice.len - 1], ',');
+                        if (conf_toks.next()) |next| {
+                            if (conf_toks.next()) |next2| {
+                                // checking length of next and next2 for error also is good
+                                config.config_map.put(next, next2) catch |e| {
+                                    std.debug.print("error: {}\n", .{e});
+                                };
+                            } else {
+                                //some other error
+                            }
+                        } else {
+                            // some error
+                        }
+                    },
+                    3 => {
+                        const pass_toks = splitCmds(allocator, trimmed_slice[1 .. trimmed_slice.len - 1], ',');
+                        if (pass_toks.items.len == 4) {
+                            const mode = try getMode(std.mem.trim(u8, pass_toks.items[0], " \t\r")[0]);
+                            const key = std.mem.trim(u8, pass_toks.items[2], " \t\r");
+                            var apps = std.ArrayList([]const u8).init(allocator);
+                            const tempo = std.mem.trim(u8, pass_toks.items[3], " \r\t");
+                            var pass_apps = std.mem.splitScalar(u8, tempo[1 .. tempo.len - 1], ',');
+                            while (pass_apps.next()) |app| {
+                                const valid_app = std.mem.trim(u8, app, " \t\r");
+                                try apps.append(valid_app[1 .. valid_app.len - 1]);
+                                std.debug.print("{s}\n", .{valid_app[1 .. valid_app.len - 1]});
+                            }
+                            const msg = AppMessage{
+                                .mode = mode,
+                                .key = key,
+                                .names = apps,
+                            };
+                            try config.pass_map.put(std.mem.trim(u8, pass_toks.items[1], " \t\r"), msg);
+                        } else {
+                            //some error
+                        }
                     },
                     else => {},
                 }
@@ -148,11 +210,14 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
     return config;
 }
 
-fn parseKeymap(allocator: std.mem.Allocator, input: []const u8) !void {
+fn parseSet(allocator: std.mem.Allocator, input: []const u8) !void {
     //should return a hashmap with all the keysbindings as keys of the
     //hash map
+    const trimmed_in = std.mem.trim(u8, input, " \t\r");
+    // std.debug.print("keymap: {s}", .{trimmed_in});
+    _ = trimmed_in;
     _ = allocator;
-    _ = input;
+    // _ = input;
 }
 
 fn parseLayout(allocator: std.mem.Allocator, input: []const u8, layout_name: []const u8) !Layout {

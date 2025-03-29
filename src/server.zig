@@ -57,6 +57,8 @@ pub const Server = struct {
     pub fn init(server: *Server) !void {
         const conf = config.Config{
             .layouts = std.ArrayList(config.Layout).init(server.alloc),
+            .config_map = std.StringHashMap([]const u8).init(server.alloc),
+            .pass_map = std.StringHashMap(config.AppMessage).init(server.alloc),
         };
 
         const wl_server = try wl.Server.create();
