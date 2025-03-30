@@ -8,7 +8,7 @@ const xkb = @import("xkbcommon");
 const Server = @import("server.zig").Server;
 
 pub fn main() anyerror!void {
-    wlr.log.init(.debug, null);
+    // wlr.log.init(.debug, null);
 
     var server: Server = undefined;
     try server.init();

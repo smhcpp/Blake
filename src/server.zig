@@ -7,7 +7,7 @@ const gpa = std.heap.c_allocator;
 
 const Toplevel = @import("toplevel.zig").Toplevel;
 const Workspace = @import("toplevel.zig").Workspace;
-const Keyboard = @import("keyboard.zig").Keyboard;
+const keyboard = @import("keyboard.zig");
 const Output = @import("output.zig").Output;
 const Popup = @import("popup.zig").Popup;
 const config = @import("config.zig");
@@ -28,16 +28,22 @@ pub const Server = struct {
     xdg_shell: *wlr.XdgShell,
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevel),
     new_xdg_popup: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopup),
+
     config: config.Config,
     workspaces: std.ArrayList(Workspace) = undefined,
     workspace_num: usize = undefined,
     workspace_cur: usize = undefined,
+    mode: config.Mode,
+
+    key_buffer: std.ArrayList(keyboard.KeyEvent) = undefined,
+    key_timeout: ?*wl.EventSource = null,
+    key_delay: u64 = 100,
 
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
     request_set_cursor: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursor),
     request_set_selection: wl.Listener(*wlr.Seat.event.RequestSetSelection) = .init(requestSetSelection),
-    keyboards: wl.list.Head(Keyboard, .link) = undefined,
+    keyboards: wl.list.Head(keyboard.Keyboard, .link) = undefined,
 
     cursor: *wlr.Cursor,
     cursor_mgr: *wlr.XcursorManager,
@@ -53,7 +59,9 @@ pub const Server = struct {
     grab_y: f64 = 0,
     grab_box: wlr.Box = undefined,
     resize_edges: wlr.Edges = .{},
+    loop: *wl.EventLoop,
 
+    // pub const key_delay: u64 = 100; // Milliseconds
     pub fn init(server: *Server) !void {
         const conf = config.Config{
             .layouts = std.ArrayList(config.Layout).init(server.alloc),
@@ -67,7 +75,11 @@ pub const Server = struct {
         const renderer = try wlr.Renderer.autocreate(backend);
         const output_layout = try wlr.OutputLayout.create(wl_server);
         const scene = try wlr.Scene.create();
+        // const delay: u64 = 100;
         server.* = .{
+            // .key_delay = 100,
+            .loop = loop,
+            .mode = config.Mode.n,
             .config = conf,
             .wl_server = wl_server,
             .backend = backend,
@@ -81,10 +93,11 @@ pub const Server = struct {
             .cursor = try wlr.Cursor.create(),
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
-        server.workspace_num = 1;
-        server.workspace_cur = 0;
 
         server.config = try config.loadConfig(server.alloc);
+        server.setUpConfig();
+        server.key_buffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
+
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
         var wi: usize = 0;
         while (wi < server.workspace_num) {
@@ -107,10 +120,8 @@ pub const Server = struct {
         _ = try wlr.DataDeviceManager.create(server.wl_server);
 
         server.backend.events.new_output.add(&server.new_output);
-
         server.xdg_shell.events.new_toplevel.add(&server.new_xdg_toplevel);
         server.xdg_shell.events.new_popup.add(&server.new_xdg_popup);
-
         server.backend.events.new_input.add(&server.new_input);
         server.seat.events.request_set_cursor.add(&server.request_set_cursor);
         server.seat.events.request_set_selection.add(&server.request_set_selection);
@@ -135,7 +146,6 @@ pub const Server = struct {
             server.alloc.free(ws.name);
         }
         server.workspaces.deinit();
-
         server.cursor_mgr.destroy();
         server.cursor.destroy();
         server.seat.destroy();
@@ -147,6 +157,11 @@ pub const Server = struct {
         server.renderer.destroy();
         server.backend.destroy();
         server.wl_server.destroy();
+    }
+
+    pub fn setUpConfig(server: *Server) void {
+        server.workspace_num = 1;
+        server.workspace_cur = 0;
     }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -289,7 +304,7 @@ pub const Server = struct {
     pub fn newInput(listener: *wl.Listener(*wlr.InputDevice), device: *wlr.InputDevice) void {
         const server: *Server = @fieldParentPtr("new_input", listener);
         switch (device.type) {
-            .keyboard => Keyboard.create(server, device) catch |err| {
+            .keyboard => keyboard.Keyboard.create(server, device) catch |err| {
                 std.log.err("failed to create keyboard: {}", .{err});
                 return;
             },

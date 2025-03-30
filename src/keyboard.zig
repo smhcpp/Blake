@@ -53,7 +53,31 @@ pub const Keyboard = struct {
 
         // Translate libinput keycode -> xkbcommon
         const keycode = event.keycode + 8;
+        const keyev = KeyEvent{
+            .state = if (event.state == .pressed) .pressed else .released,
+            .presstime = event.time_msec,
+            .keycode = keycode,
+            .keysym = xkb.State.keyGetOneSym(wlr_keyboard.xkb_state.?, keycode),
+        };
 
+        keyboard.server.key_buffer.append(keyev) catch |e| {
+            std.log.err("error: {}", .{e});
+        };
+
+        if (keyboard.server.key_timeout == null) {
+            // _ = keyboard.server.loop.(timer, keyboard.server.key_delay);
+            // } else {
+            keyboard.server.key_timeout = keyboard.server.loop.addTimer(*Keyboard,
+                // u64,
+                // Server.key_delay,
+                // keyboard.handleKeyTimeOut,
+                handleKeyTimeOut,
+                // handleKeyTimeOut, // Use correct function name
+                keyboard // keyboard.server.key_delay,
+            ) catch null;
+            // keyboard.server.loop.addTimer(comptime T: type, comptime func: fn(data:T)c_int, data: T)
+        }
+        // _ = keyev;
         // var buffer: [8]u8 = undefined;
         // const len = xkb.State.keyGetUtf8(wlr_keyboard.xkb_state.?, keycode, &buffer);
         // const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
@@ -75,7 +99,7 @@ pub const Keyboard = struct {
         var handled = false;
         if (wlr_keyboard.getModifiers().logo and event.state == .pressed) {
             for (wlr_keyboard.xkb_state.?.keyGetSyms(keycode)) |sym| {
-                if (handleKeybind(keyboard.server, sym)) {
+                if (keyboard.handleKeybind(sym)) {
                     handled = true;
                     break;
                 }
@@ -95,57 +119,111 @@ pub const Keyboard = struct {
 
         gpa.destroy(keyboard);
     }
+
+    /// Assumes the modifier used for compositor keybinds is pressed
+    /// Returns true if the key was handled
+    pub fn handleKeybind(keyboard: *Keyboard, key: xkb.Keysym) bool {
+        // std.log.info("handle Keybind pressed", .{});
+        switch (@intFromEnum(key)) {
+            // Exit the compositor
+
+            xkb.Keysym.Return => {
+                const cmd = "kitty";
+                var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, keyboard.server.alloc);
+                var env_map = std.process.getEnvMap(keyboard.server.alloc) catch |err| {
+                    std.log.err("Failed to spawn: {}", .{err});
+                    return false;
+                };
+                defer env_map.deinit();
+                env_map.put("WAYLAND_DISPLAY", keyboard.server.socket) catch |err| {
+                    std.log.err("Failed to put the socket for the enviornment {}", .{err});
+                };
+                child.env_map = &env_map;
+
+                // Set the environment variables
+                _ = child.spawn() catch |err| {
+                    std.log.err("Failed to spawn: {}", .{err});
+                    return false;
+                };
+                return true;
+            },
+
+            //giving cycling effect to super+tab.
+            xkb.Keysym.Tab => {
+                const pre = keyboard.server.workspace_cur;
+                keyboard.server.workspace_cur += 1;
+                // server.workspace_num += 1;
+                if (keyboard.server.workspace_cur >= keyboard.server.workspace_num) keyboard.server.workspace_cur -= keyboard.server.workspace_num;
+                keyboard.server.switchWS(pre);
+            },
+
+            xkb.Keysym.Escape => keyboard.server.wl_server.terminate(),
+            // Focus the next toplevel in the stack, pushing the current top to the back
+            // xkb.Keysym.F1 => {
+            // std.log.info("Key F1 pressed", .{});
+            // if (server.workspaces.items[server.workspace_cur].toplevels.items.len < 2) return true;
+            // const toplevel: *Toplevel = @fieldParentPtr("link", server.workspaces.items[server.workspace_cur].toplevels.link.prev.?);
+            // server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
+            // },
+            else => return false,
+        }
+        return true;
+    }
+
+    // handleKeyTimeOut,
+    // pub fn handleKeyTimeout(fd: c_int, mask: u32, data: ?*anyopaque) callconv(.C) c_int {
+    // const keyboard: *Keyboard = @ptrCast(@alignCast(data.?));
+    // keyboard.server.key_buffer.clearRetainingCapacity();
+    // _ = fd;
+    // _ = mask;
+    // keyboard.server.key_timeout = null;
+    // return 0;
+    // }
+    // pub fn handleKeyTimeout(data: ?*anyopaque, delay: u64) callconv(.C) c_int {
+    // const server = @as(*Server, @ptrFromInt(@intFromPtr(data)));
+    // std.debug.print("timeout of key Logger.\n", .{});
+    //
+    // const sequence = server.key_buffer.items;
+    // Your existing timeout handling code...
+    // _ = sequence;
+    // _ = delay;
+    // server.key_buffer.clearRetainingCapacity();
+    // server.key_timeout = null;
+    // return 0; // Continue the timer (return 0) or stop it (return 1)
+    // }
 };
 
-/// Assumes the modifier used for compositor keybinds is pressed
-/// Returns true if the key was handled
-pub fn handleKeybind(server: *Server, key: xkb.Keysym) bool {
-    // std.log.info("handle Keybind pressed", .{});
-    switch (@intFromEnum(key)) {
-        // Exit the compositor
+pub const KeyEvent = struct {
+    keysym: xkb.Keysym,
+    keycode: u32,
+    presstime: u64, // Use event.time_msec from wlroots
+    state: enum { pressed, released },
+};
 
-        xkb.Keysym.Return => {
-            const cmd = "kitty";
-            var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, server.alloc);
-            var env_map = std.process.getEnvMap(server.alloc) catch |err| {
-                std.log.err("Failed to spawn: {}", .{err});
-                return false;
-            };
-            defer env_map.deinit();
-            env_map.put("WAYLAND_DISPLAY", server.socket) catch |err| {
-                std.log.err("Failed to put the socket for the enviornment {}", .{err});
-            };
-            child.env_map = &env_map;
-            // try child.spawn();
-            // std.log.info("Key Enter pressed", .{});
-            // child.env_map = env_map_ptr;
+pub fn handleKeyTimeOut(keyboard: *Keyboard) c_int {
+    const server = keyboard.server;
+    // _ = keyb;
+    defer server.key_timeout = null;
+    // _ = keyboard;
+    // _ = delay;
+    server.key_buffer.clearRetainingCapacity();
+    // server.key_timeout = null;
+    // const sequence = server.key_buffer.items;
+    // std.debug.print("timeout of key Logger.\n", .{});
+    // if (config.findMatchingAction(sequence)) |action| {
+    // config.executeAction(action);
+    // } else {
+    // Process individual keys (e.g. home-row mods)
+    // for (sequence) |event| {
+    // if (isHomeRowKey(event.keysym)) {
+    // handleHomeRowKey(event.keysym, event.presstime);
+    // } else {
+    // handleNormalKey(event.keysym);
+    // }
+    // }
+    // }
+    // _ = sequence;
 
-            // Set the environment variables
-            _ = child.spawn() catch |err| {
-                std.log.err("Failed to spawn: {}", .{err});
-                return false;
-            };
-            return true;
-        },
-
-        //giving cycling effect to super+tab.
-        xkb.Keysym.Tab => {
-            const pre = server.workspace_cur;
-            server.workspace_cur += 1;
-            // server.workspace_num += 1;
-            if (server.workspace_cur >= server.workspace_num) server.workspace_cur -= server.workspace_num;
-            server.switchWS(pre);
-        },
-
-        xkb.Keysym.Escape => server.wl_server.terminate(),
-        // Focus the next toplevel in the stack, pushing the current top to the back
-        // xkb.Keysym.F1 => {
-        // std.log.info("Key F1 pressed", .{});
-        // if (server.workspaces.items[server.workspace_cur].toplevels.items.len < 2) return true;
-        // const toplevel: *Toplevel = @fieldParentPtr("link", server.workspaces.items[server.workspace_cur].toplevels.link.prev.?);
-        // server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
-        // },
-        else => return false,
-    }
-    return true;
+    // server.key_buffer.clearRetainingCapacity();
+    return 0;
 }
