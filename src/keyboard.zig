@@ -49,6 +49,7 @@ pub const Keyboard = struct {
 
     pub fn handleKey(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
         const keyboard: *Keyboard = @fieldParentPtr("key", listener);
+        const server = keyboard.server;
         const wlr_keyboard = keyboard.device.toKeyboard();
 
         // Translate libinput keycode -> xkbcommon
@@ -60,24 +61,24 @@ pub const Keyboard = struct {
             .keysym = xkb.State.keyGetOneSym(wlr_keyboard.xkb_state.?, keycode),
         };
 
-        keyboard.server.key_buffer.append(keyev) catch |e| {
+        server.keybuffer.append(keyev) catch |e| {
             std.log.err("error: {}", .{e});
         };
 
-        if (keyboard.server.key_timeout == null) {
-            // _ = keyboard.server.loop.(timer, keyboard.server.key_delay);
-            // } else {
-            keyboard.server.key_timeout = keyboard.server.loop.addTimer(*Keyboard,
-                // u64,
-                // Server.key_delay,
-                // keyboard.handleKeyTimeOut,
-                handleKeyTimeOut,
-                // handleKeyTimeOut, // Use correct function name
-                keyboard // keyboard.server.key_delay,
-            ) catch null;
-            // keyboard.server.loop.addTimer(comptime T: type, comptime func: fn(data:T)c_int, data: T)
+        if (server.keytimer) |timer| {
+            timer.timerUpdate(server.keydelay) catch |err| {
+                std.log.err("Failed to update timer: {}", .{err});
+                return;
+            };
+        } else {
+            server.keytimer = server.loop.addTimer(*Keyboard, handleKeyTimeOut, keyboard) catch null;
+            if (server.keytimer) |timer| {
+                timer.timerUpdate(server.keydelay) catch |err| {
+                    std.log.err("Failed to update timer: {}", .{err});
+                    return;
+                };
+            }
         }
-        // _ = keyev;
         // var buffer: [8]u8 = undefined;
         // const len = xkb.State.keyGetUtf8(wlr_keyboard.xkb_state.?, keycode, &buffer);
         // const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
@@ -107,8 +108,8 @@ pub const Keyboard = struct {
         }
 
         if (!handled) {
-            keyboard.server.seat.setKeyboard(wlr_keyboard);
-            keyboard.server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+            server.seat.setKeyboard(wlr_keyboard);
+            server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
         }
     }
 
@@ -120,8 +121,6 @@ pub const Keyboard = struct {
         gpa.destroy(keyboard);
     }
 
-    /// Assumes the modifier used for compositor keybinds is pressed
-    /// Returns true if the key was handled
     pub fn handleKeybind(keyboard: *Keyboard, key: xkb.Keysym) bool {
         // std.log.info("handle Keybind pressed", .{});
         switch (@intFromEnum(key)) {
@@ -169,28 +168,6 @@ pub const Keyboard = struct {
         }
         return true;
     }
-
-    // handleKeyTimeOut,
-    // pub fn handleKeyTimeout(fd: c_int, mask: u32, data: ?*anyopaque) callconv(.C) c_int {
-    // const keyboard: *Keyboard = @ptrCast(@alignCast(data.?));
-    // keyboard.server.key_buffer.clearRetainingCapacity();
-    // _ = fd;
-    // _ = mask;
-    // keyboard.server.key_timeout = null;
-    // return 0;
-    // }
-    // pub fn handleKeyTimeout(data: ?*anyopaque, delay: u64) callconv(.C) c_int {
-    // const server = @as(*Server, @ptrFromInt(@intFromPtr(data)));
-    // std.debug.print("timeout of key Logger.\n", .{});
-    //
-    // const sequence = server.key_buffer.items;
-    // Your existing timeout handling code...
-    // _ = sequence;
-    // _ = delay;
-    // server.key_buffer.clearRetainingCapacity();
-    // server.key_timeout = null;
-    // return 0; // Continue the timer (return 0) or stop it (return 1)
-    // }
 };
 
 pub const KeyEvent = struct {
@@ -202,28 +179,21 @@ pub const KeyEvent = struct {
 
 pub fn handleKeyTimeOut(keyboard: *Keyboard) c_int {
     const server = keyboard.server;
-    // _ = keyb;
-    defer server.key_timeout = null;
-    // _ = keyboard;
-    // _ = delay;
-    server.key_buffer.clearRetainingCapacity();
-    // server.key_timeout = null;
-    // const sequence = server.key_buffer.items;
-    // std.debug.print("timeout of key Logger.\n", .{});
+    defer server.keytimer = null;
+    const sequence = server.keybuffer.items;
     // if (config.findMatchingAction(sequence)) |action| {
     // config.executeAction(action);
     // } else {
     // Process individual keys (e.g. home-row mods)
-    // for (sequence) |event| {
-    // if (isHomeRowKey(event.keysym)) {
-    // handleHomeRowKey(event.keysym, event.presstime);
-    // } else {
-    // handleNormalKey(event.keysym);
-    // }
-    // }
-    // }
-    // _ = sequence;
+    for (sequence) |keyev| {
+        std.debug.print("keycode: {}\t", .{keyev.keycode});
+        // if (isHomeRowKey(event.keysym)) {
+        // handleHomeRowKey(event.keysym, event.presstime);
+        // } else {
+        // handleNormalKey(event.keysym);
+    }
 
-    // server.key_buffer.clearRetainingCapacity();
+    std.debug.print("\n", .{});
+    server.keybuffer.clearRetainingCapacity();
     return 0;
 }

@@ -35,9 +35,9 @@ pub const Server = struct {
     workspace_cur: usize = undefined,
     mode: config.Mode,
 
-    key_buffer: std.ArrayList(keyboard.KeyEvent) = undefined,
-    key_timeout: ?*wl.EventSource = null,
-    key_delay: u64 = 100,
+    keybuffer: std.ArrayList(keyboard.KeyEvent) = undefined,
+    keytimer: ?*wl.EventSource = null,
+    keydelay: i32 = 100,
 
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
@@ -61,7 +61,6 @@ pub const Server = struct {
     resize_edges: wlr.Edges = .{},
     loop: *wl.EventLoop,
 
-    // pub const key_delay: u64 = 100; // Milliseconds
     pub fn init(server: *Server) !void {
         const conf = config.Config{
             .layouts = std.ArrayList(config.Layout).init(server.alloc),
@@ -75,9 +74,7 @@ pub const Server = struct {
         const renderer = try wlr.Renderer.autocreate(backend);
         const output_layout = try wlr.OutputLayout.create(wl_server);
         const scene = try wlr.Scene.create();
-        // const delay: u64 = 100;
         server.* = .{
-            // .key_delay = 100,
             .loop = loop,
             .mode = config.Mode.n,
             .config = conf,
@@ -96,7 +93,7 @@ pub const Server = struct {
 
         server.config = try config.loadConfig(server.alloc);
         server.setUpConfig();
-        server.key_buffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
+        server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
 
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
         var wi: usize = 0;
