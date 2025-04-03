@@ -1,4 +1,7 @@
 const std = @import("std");
+const xkb = @import("xkbcommon");
+const wlr = @import("wlroots");
+
 pub const ConfigError = error{
     MapNotFound,
     WrongLayoutNumbers,
@@ -26,8 +29,10 @@ pub const AppMessage = struct {
 
 pub const Config = struct {
     layouts: std.ArrayList(Layout),
-    config_map: std.StringHashMap([]const u8),
-    pass_map: std.StringHashMap(AppMessage),
+    configmap: std.StringHashMap([]const u8),
+    keyholdmap: std.AutoHashMap(u32, wlr.Keyboard.ModifierMask),
+    // keypressarr: [256]u32,
+    passmap: std.StringHashMap(AppMessage),
 };
 
 pub const Layout = struct {
@@ -115,8 +120,9 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
     var lines = std.mem.splitScalar(u8, input, '\n');
     var config = Config{
         .layouts = std.ArrayList(Layout).init(allocator),
-        .config_map = std.StringHashMap([]const u8).init(allocator),
-        .pass_map = std.StringHashMap(AppMessage).init(allocator),
+        .configmap = std.StringHashMap([]const u8).init(allocator),
+        .passmap = std.StringHashMap(AppMessage).init(allocator),
+        .keyholdmap = std.AutoHashMap(u32, wlr.Keyboard.ModifierMask).init(allocator),
     };
     var joined_commands = std.ArrayList(u8).init(allocator);
     defer joined_commands.deinit();
@@ -169,7 +175,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                         if (conf_toks.next()) |next| {
                             if (conf_toks.next()) |next2| {
                                 // checking length of next and next2 for error also is good
-                                config.config_map.put(next, next2) catch |e| {
+                                config.configmap.put(next, next2) catch |e| {
                                     std.debug.print("error: {}\n", .{e});
                                 };
                             } else {
@@ -197,7 +203,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                                 .key = key,
                                 .names = apps,
                             };
-                            try config.pass_map.put(std.mem.trim(u8, pass_toks.items[1], " \t\r"), msg);
+                            try config.passmap.put(std.mem.trim(u8, pass_toks.items[1], " \t\r"), msg);
                         } else {
                             //some error
                         }

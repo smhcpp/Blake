@@ -35,10 +35,6 @@ pub const Server = struct {
     workspace_cur: usize = undefined,
     mode: config.Mode,
 
-    keybuffer: std.ArrayList(keyboard.KeyEvent) = undefined,
-    keytimer: ?*wl.EventSource = null,
-    keydelay: i32 = 100,
-
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
     request_set_cursor: wl.Listener(*wlr.Seat.event.RequestSetCursor) = .init(requestSetCursor),
@@ -62,12 +58,19 @@ pub const Server = struct {
     loop: *wl.EventLoop,
 
     pub fn init(server: *Server) !void {
-        const conf = config.Config{
-            .layouts = std.ArrayList(config.Layout).init(server.alloc),
-            .config_map = std.StringHashMap([]const u8).init(server.alloc),
-            .pass_map = std.StringHashMap(config.AppMessage).init(server.alloc),
-        };
-
+        // const conf = config.Config{
+        // .layouts = std.ArrayList(config.Layout).init(server.alloc),
+        // .configmap = std.StringHashMap([]const u8).init(server.alloc),
+        // .passmap = std.StringHashMap(config.AppMessage).init(server.alloc),
+        // .homerowmap = std.AutoHashMap(u32, xkb.Keysym).init(server.alloc),
+        // };
+        //try also with 'f' instead of 41
+        // var super:wlr.Keyboard.ModifierMask=wlr.Keyboard.
+        // try conf.homerowmap.put(
+        // 41,
+        // );
+        // std.log.info("number of layouts loaded: {}", .{conf.layouts.items.len});
+        // wlr.Keyboard.M
         const wl_server = try wl.Server.create();
         const loop = wl_server.getEventLoop();
         const backend = try wlr.Backend.autocreate(loop, null);
@@ -77,7 +80,7 @@ pub const Server = struct {
         server.* = .{
             .loop = loop,
             .mode = config.Mode.n,
-            .config = conf,
+            .config = undefined,
             .wl_server = wl_server,
             .backend = backend,
             .renderer = renderer,
@@ -90,11 +93,15 @@ pub const Server = struct {
             .cursor = try wlr.Cursor.create(),
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
+        server.config = try config.loadConfig(gpa);
+        const mod = wlr.Keyboard.ModifierMask{
+            .logo = true,
+        };
+        try server.config.keyholdmap.put(41, mod);
 
-        server.config = try config.loadConfig(server.alloc);
+        // server.config = try config.loadConfig(server.alloc);
         server.setUpConfig();
-        server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
-
+        // server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
         var wi: usize = 0;
         while (wi < server.workspace_num) {
@@ -134,6 +141,8 @@ pub const Server = struct {
     }
 
     pub fn deinit(server: *Server) void {
+        // server.sigint_source.remove();
+        // server.sigterm_source.remove();
         for (server.workspaces.items) |*ws| {
             for (ws.toplevels.items) |toplevel| {
                 toplevel.scene_tree.node.destroy();
@@ -143,16 +152,20 @@ pub const Server = struct {
             server.alloc.free(ws.name);
         }
         server.workspaces.deinit();
+
         server.cursor_mgr.destroy();
         server.cursor.destroy();
-        server.seat.destroy();
+        server.wl_server.terminate();
         // server.xdg_shell.destroy();
         // server.scene_output_layout.destroy();
         server.output_layout.destroy();
         // server.scene.deinit();
+        server.wl_server.destroyClients();
+        server.seat.destroy();
+        server.backend.destroy();
         server.allocator.destroy();
         server.renderer.destroy();
-        server.backend.destroy();
+
         server.wl_server.destroy();
     }
 
