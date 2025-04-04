@@ -13,7 +13,7 @@ const Popup = @import("popup.zig").Popup;
 const config = @import("config.zig");
 const Tiling = @import("tiling.zig");
 pub const Server = struct {
-    wl_server: *wl.Server,
+    wlserver: *wl.Server,
     backend: *wlr.Backend,
     socket: []const u8 = undefined,
     renderer: *wlr.Renderer,
@@ -71,25 +71,25 @@ pub const Server = struct {
         // );
         // std.log.info("number of layouts loaded: {}", .{conf.layouts.items.len});
         // wlr.Keyboard.M
-        const wl_server = try wl.Server.create();
-        const loop = wl_server.getEventLoop();
+        const wlserver = try wl.Server.create();
+        const loop = wlserver.getEventLoop();
         const backend = try wlr.Backend.autocreate(loop, null);
         const renderer = try wlr.Renderer.autocreate(backend);
-        const output_layout = try wlr.OutputLayout.create(wl_server);
+        const output_layout = try wlr.OutputLayout.create(wlserver);
         const scene = try wlr.Scene.create();
         server.* = .{
             .loop = loop,
             .mode = config.Mode.n,
             .config = undefined,
-            .wl_server = wl_server,
+            .wlserver = wlserver,
             .backend = backend,
             .renderer = renderer,
             .allocator = try wlr.Allocator.autocreate(backend, renderer),
             .scene = scene,
             .output_layout = output_layout,
             .scene_output_layout = try scene.attachOutputLayout(output_layout),
-            .xdg_shell = try wlr.XdgShell.create(wl_server, 2),
-            .seat = try wlr.Seat.create(wl_server, "default"),
+            .xdg_shell = try wlr.XdgShell.create(wlserver, 2),
+            .seat = try wlr.Seat.create(wlserver, "default"),
             .cursor = try wlr.Cursor.create(),
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
@@ -97,7 +97,7 @@ pub const Server = struct {
         const mod = wlr.Keyboard.ModifierMask{
             .logo = true,
         };
-        try server.config.keyholdmap.put(41, mod);
+        try server.config.mapmodifiers.put(41, mod);
 
         // server.config = try config.loadConfig(server.alloc);
         server.setUpConfig();
@@ -117,11 +117,11 @@ pub const Server = struct {
             wi += 1;
         }
 
-        try server.renderer.initServer(wl_server);
+        try server.renderer.initServer(wlserver);
 
-        _ = try wlr.Compositor.create(server.wl_server, 6, server.renderer);
-        _ = try wlr.Subcompositor.create(server.wl_server);
-        _ = try wlr.DataDeviceManager.create(server.wl_server);
+        _ = try wlr.Compositor.create(server.wlserver, 6, server.renderer);
+        _ = try wlr.Subcompositor.create(server.wlserver);
+        _ = try wlr.DataDeviceManager.create(server.wlserver);
 
         server.backend.events.new_output.add(&server.new_output);
         server.xdg_shell.events.new_toplevel.add(&server.new_xdg_toplevel);
@@ -155,18 +155,18 @@ pub const Server = struct {
 
         server.cursor_mgr.destroy();
         server.cursor.destroy();
-        server.wl_server.terminate();
+        server.wlserver.terminate();
         // server.xdg_shell.destroy();
         // server.scene_output_layout.destroy();
         server.output_layout.destroy();
         // server.scene.deinit();
-        server.wl_server.destroyClients();
+        server.wlserver.destroyClients();
         server.seat.destroy();
         server.backend.destroy();
         server.allocator.destroy();
         server.renderer.destroy();
 
-        server.wl_server.destroy();
+        server.wlserver.destroy();
     }
 
     pub fn setUpConfig(server: *Server) void {

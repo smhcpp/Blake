@@ -15,7 +15,7 @@ pub fn main() anyerror!void {
     defer server.deinit();
 
     var buf: [11]u8 = undefined;
-    server.socket = try server.wl_server.addSocketAuto(&buf);
+    server.socket = try server.wlserver.addSocketAuto(&buf);
 
     if (std.os.argv.len >= 2) {
         const cmd = std.mem.span(std.os.argv[1]);
@@ -30,7 +30,7 @@ pub fn main() anyerror!void {
     try server.backend.start();
 
     std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{server.socket});
-    server.wl_server.run();
+    server.wlserver.run();
 
     // std.debug.print("\n here is the first layout: {s}, {any}\n\n", .{ server.layouts.items[0].name, server.layouts.items[0].boxs });
 }
