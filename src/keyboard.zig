@@ -367,7 +367,6 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
             const node = bufferin.map.get(key) orelse break :blk null;
             break :blk node.next;
         };
-
         // Check if the key still exists (may have been removed earlier)
         const keyev_ptr = bufferin.map.getPtr(key) orelse {
             current_key = next_key;
@@ -376,6 +375,7 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
 
         // Condition 1: Check if the key event is unprocessed
         if (!keyev_ptr.value.processed) {
+            // std.debug.print("here is keycheck: {}\n",.{keyev_ptr.value.keycode});
             // Condition 2: Check if it's a modifier key with hold time exceeded
             if (keyboard.server.config.mapmodifiers.get(keyev_ptr.value.keycode)) |keymod| {
                 const now: u64 = @intCast(std.time.milliTimestamp());
@@ -411,13 +411,20 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
 
     keyboard.server.seat.setKeyboard(keyboard.wlrkeyboard);
 
+    std.debug.print("bufferout length: {}\n",.{keyboard.bufferout.len});
+    var idx:usize=keyboard.bufferout.len;
     // Process all entries in bufferout in order (from head to tail)
-    while (keyboard.bufferout.popFirst()) |node| {
-        const event = node.data;
-        // Send the key event to applications
-        keyboard.server.seat.keyboardNotifyKey(event.timems, event.keycode, if (event.state == .pressed) .pressed else .released);
+    while (idx>0):(idx-=1)  {
+        if(keyboard.bufferout.popFirst()) |node|{
+            const event = node.data;
+            // Send the key event to applications
+            keyboard.server.seat.keyboardNotifyKey(event.timems, event.keycode, if (event.state == .pressed) .pressed else .released);
+            // keyboard.server.alloc.destroy(node);
+            std.debug.print("poping happened: {}\n",.{event.keycode});
+        }
     }
 
+    std.debug.print("after while, bufferout length: {}\n",.{keyboard.bufferout.len});
     // Restart the timer
     keyboard.setupTimer(
         keyboard.keycheckdelay,
