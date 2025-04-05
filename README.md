@@ -1,10 +1,22 @@
-
 # Blake
 
 A vim-like compositor written in Zig based on zig-wlroots.
 
 **Note:** This project is currently non-functional and has many bugs.
 
+## Table of Contents
+- [Install](#install)
+- [Planned Features](#planned-features)
+
+## Install
+
+Clone the repository and run `zig build` in the `blake` folder:
+
+```
+git clone <repository_url>
+cd blake
+zig build
+```
 ## Planned Features
 
 - [ ] **Efficient Workspace Removal:** Remove workspaces in an efficient manner.
