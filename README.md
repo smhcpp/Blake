@@ -8,7 +8,7 @@ A vim-like compositor written in Zig based on zig-wlroots.
 - [Install](#install)
 - [Planned Features](#planned-features)
 
-## Install
+## Compile
 
 Clone the repository and run `zig build` in the `blake` folder:
 
