@@ -20,14 +20,14 @@ zig build
 ## Planned Features
 
 - [ ] **Efficient Workspace Removal:** Remove workspaces in an efficient manner.
-- [ ] **Default Layout Loading:** Load layouts with a default version that works if there is an error.
+- [ ] **Default Config Loading:** Load configs with a default version that works if there is an error when loading user defined config.
 - [ ] **Background Options:** Support for a background, which can be a ghostty terminal using libghostty, an image, or nothing—based on user preference.
-- [ ] **Command Bar Plugin:** Initially, a small command bar will be included for demonstration, which will later become a plugin.
-- [ ] **Layout Commands:** Add the possibility of including commands in `layout.json` (which will be renamed to `layout.conf`).
-- [ ] **Layout Manager:** Load different layout schemes and policies.
+- [ ] **Command Bar Plugin:** Minimal command bar to run different commands in command mode.
+- [ ] **Layout Commands:** Add the possibility of including commands in `configs.conf`. 
+- [ ] **Layout Manager:** Load different layout schemes with different policies (like resize polocies which is specific to each layout).
 - [ ] **Plugin Manager:** Load various plugins related to the compositor.
-- [ ] **Dual Modes:** Implement both app mode and normal mode.
-- [ ] **Keymap Manager:** Enable keymapping in different modes, including the option to have separate keymaps for each application in normal mode.
+- [ ] **Modal Capability:** Implement app mode(insert), normal mode and command mode.
+- [ ] **Keymap Manager:** Enable keymapping in different modes, including the option to have separate keymaps for each application.
 - [ ] **Animation Manager:** Allow users to choose which animations to include in their compositor.
 - [ ] **Command Mode:** Change many behaviors of the compositor via simple commands instead of modifying many files.
   - *Example:* Add items to the status bar (like a Bluetooth manager) and set options for live changes versus saved changes.
