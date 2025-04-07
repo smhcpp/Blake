@@ -5,7 +5,7 @@ A vim-like compositor written in Zig based on zig-wlroots.
 **Note:** This project is currently non-functional and has many bugs.
 
 ## Table of Contents
-- [Install](#install)
+- [Compile](#Compile)
 - [Planned Features](#planned-features)
 
 ## Compile
@@ -13,7 +13,7 @@ A vim-like compositor written in Zig based on zig-wlroots.
 Clone the repository and run `zig build` in the `blake` folder:
 
 ```
-git clone <repository_url>
+git clone https://github.com/smhcpp/Blake 
 cd blake
 zig build
 ```
