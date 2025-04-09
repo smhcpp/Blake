@@ -30,7 +30,7 @@ pub const AppMessage = struct {
 pub const Config = struct {
     layouts: std.ArrayList(Layout),
     mapconfigs: std.StringHashMap([]const u8),
-    mapmodifiers: std.AutoHashMap(u32, wlr.Keyboard.ModifierMask),
+    mapkeys: std.AutoHashMap(xkb.Keysym, xkb.Keysym),
     // keypressarr: [256]u32,
     mapappkeys: std.StringHashMap(AppMessage),
 };
@@ -122,7 +122,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
         .layouts = std.ArrayList(Layout).init(allocator),
         .mapconfigs = std.StringHashMap([]const u8).init(allocator),
         .mapappkeys = std.StringHashMap(AppMessage).init(allocator),
-        .mapmodifiers = std.AutoHashMap(u32, wlr.Keyboard.ModifierMask).init(allocator),
+        .mapkeys = std.AutoHashMap(xkb.Keysym, xkb.Keysym).init(allocator),
     };
     var joined_commands = std.ArrayList(u8).init(allocator);
     defer joined_commands.deinit();

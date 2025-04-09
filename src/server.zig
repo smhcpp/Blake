@@ -58,19 +58,6 @@ pub const Server = struct {
     loop: *wl.EventLoop,
 
     pub fn init(server: *Server) !void {
-        // const conf = config.Config{
-        // .layouts = std.ArrayList(config.Layout).init(server.alloc),
-        // .configmap = std.StringHashMap([]const u8).init(server.alloc),
-        // .passmap = std.StringHashMap(config.AppMessage).init(server.alloc),
-        // .homerowmap = std.AutoHashMap(u32, xkb.Keysym).init(server.alloc),
-        // };
-        //try also with 'f' instead of 41
-        // var super:wlr.Keyboard.ModifierMask=wlr.Keyboard.
-        // try conf.homerowmap.put(
-        // 41,
-        // );
-        // std.log.info("number of layouts loaded: {}", .{conf.layouts.items.len});
-        // wlr.Keyboard.M
         const wlserver = try wl.Server.create();
         const loop = wlserver.getEventLoop();
         const backend = try wlr.Backend.autocreate(loop, null);
@@ -94,11 +81,13 @@ pub const Server = struct {
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
         server.config = try config.loadConfig(gpa);
-        const mod = wlr.Keyboard.ModifierMask{
-            .logo = true,
-        };
-        try server.config.mapmodifiers.put(41, mod);
-
+        const symg: xkb.Keysym = @enumFromInt(xkb.Keysym.g);
+        const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
+        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
+        const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
+        try server.config.mapkeys.put(symg, symshl);
+        // try server.config.mapkeys.put(xkb.Keysym.f, xkb.Keysym.Super_L);
+        try server.config.mapkeys.put(symf, symsupl);
         // server.config = try config.loadConfig(server.alloc);
         server.setUpConfig();
         // server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
@@ -160,7 +149,7 @@ pub const Server = struct {
         // server.scene_output_layout.destroy();
         server.output_layout.destroy();
         // server.scene.deinit();
-        server.wlserver.destroyClients();
+        // server.wlserver.destroyClients();
         server.seat.destroy();
         server.backend.destroy();
         server.allocator.destroy();

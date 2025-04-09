@@ -9,12 +9,30 @@ const Toplevel = @import("toplevel.zig").Toplevel;
 const Server = @import("server.zig").Server;
 const DLL = std.DoublyLinkedList(KeyEvent);
 
+pub const ModifierFlags = struct {
+    superL: i8 = 0,
+    superR: i8 = 0,
+    altL: i8 = 0,
+    altR: i8 = 0,
+    shiftL: i8 = 0,
+    shiftR: i8 = 0,
+    ctrlL: i8 = 0,
+    ctrlR: i8 = 0,
+    numlock: i8 = 0,
+    caps: i8 = 0,
+};
+
 pub const KeyEvent = struct {
     keysym: xkb.Keysym,
     keycode: u32,
     timems: u32 = 0, // Use event.time_msec from wlroots
     state: enum { pressed, released } = .pressed,
+    // processed: enum { raw, notmodifier, modifier } = .raw,
     processed: bool = false,
+    // out: bool = false,
+    ismodifier: bool = false,
+    // raw: not processed at all, notmodifier: processed but not a modifier,
+    // modifier: processed and it is a modifier
 };
 
 pub const Keyboard = struct {
@@ -24,15 +42,18 @@ pub const Keyboard = struct {
 
     bufferin: utility.OrderedAutoHashMap(u64, KeyEvent),
     bufferout: DLL,
-    listpresstime: [256]u64 = .{0} ** 256,
+    listpresstime: [256]u32 = .{0} ** 256,
+    listismodifier: [256]bool = .{false} ** 256,
 
     keychecktimer: ?*wl.EventSource = null,
     keyholdthreshold: i32 = 200,
-    keycheckdelay: i32 = 50,
+    keycheckdelay: i32 = 30,
+    wlrtimedelay: u64 = 0,
 
     wlrkeyboard: *wlr.Keyboard,
 
-    modifierflags: wlr.Keyboard.ModifierMask = wlr.Keyboard.ModifierMask{},
+    // modifierflags: wlr.Keyboard.ModifierMask = wlr.Keyboard.ModifierMask{},
+    modifierflags: ModifierFlags = ModifierFlags{},
 
     modifiers: wl.Listener(*wlr.Keyboard) = .init(handleModifiers),
     key: wl.Listener(*wlr.Keyboard.event.Key) = .init(handleKey),
@@ -93,23 +114,113 @@ pub const Keyboard = struct {
         }
     }
 
-    pub fn setModifierFlag(keyboard: *Keyboard, keymod: wlr.Keyboard.ModifierMask, flag: bool) void {
-        if (keymod.caps) {
-            keyboard.modifierflags.caps = flag;
-        } else if (keymod.alt) {
-            keyboard.modifierflags.alt = flag;
-        } else if (keymod.ctrl) {
-            keyboard.modifierflags.ctrl = flag;
-        } else if (keymod.logo) {
-            keyboard.modifierflags.logo = flag;
-        } else if (keymod.mod2) {
-            keyboard.modifierflags.mod2 = flag;
-        } else if (keymod.mod3) {
-            keyboard.modifierflags.mod3 = flag;
-        } else if (keymod.mod5) {
-            keyboard.modifierflags.mod5 = flag;
-        } else if (keymod.shift) {
-            keyboard.modifierflags.shift = flag;
+    pub fn isWLRModifierOn(keyboard: *Keyboard, mod: wlr.Keyboard.ModifierMask) bool {
+        // const mod=keyboard.wlrkeyboard.getModifiers();
+        _ = keyboard;
+        if (mod.caps) return true;
+        if (mod.alt) return true;
+        if (mod.ctrl) return true;
+        if (mod.logo) return true;
+        if (mod.mod2) return true;
+        if (mod.mod3) return true;
+        if (mod.mod5) return true;
+        if (mod.shift) return true;
+        return false;
+    }
+
+    pub fn isSymKeyModifier(keyboard: *Keyboard, sym: xkb.Keysym) bool {
+        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
+        const symshr: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_R);
+        const symsul: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
+        const symsur: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_R);
+        const symctl: xkb.Keysym = @enumFromInt(xkb.Keysym.Control_L);
+        const symctr: xkb.Keysym = @enumFromInt(xkb.Keysym.Control_R);
+        const symall: xkb.Keysym = @enumFromInt(xkb.Keysym.Alt_L);
+        const symalr: xkb.Keysym = @enumFromInt(xkb.Keysym.Alt_R);
+        const symcaps: xkb.Keysym = @enumFromInt(xkb.Keysym.Caps_Lock);
+        const symnuml: xkb.Keysym = @enumFromInt(xkb.Keysym.Num_Lock);
+        _ = keyboard;
+        switch (sym) {
+            symshl => {
+                return true;
+            },
+            symshr => {
+                return true;
+            },
+            symsul => {
+                return true;
+            },
+            symsur => {
+                return true;
+            },
+            symctl => {
+                return true;
+            },
+            symctr => {
+                return true;
+            },
+            symnuml => {
+                return true;
+            },
+            symcaps => {
+                return true;
+            },
+            symall => {
+                return true;
+            },
+            symalr => {
+                return true;
+            },
+            else => {
+                return false;
+            },
+        }
+    }
+
+    pub fn setModifierFlags(keyboard: *Keyboard, sym: xkb.Keysym, flag: bool) void {
+        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
+        const symshr: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_R);
+        const symsul: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
+        const symsur: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_R);
+        const symctl: xkb.Keysym = @enumFromInt(xkb.Keysym.Control_L);
+        const symctr: xkb.Keysym = @enumFromInt(xkb.Keysym.Control_R);
+        const symall: xkb.Keysym = @enumFromInt(xkb.Keysym.Alt_L);
+        const symalr: xkb.Keysym = @enumFromInt(xkb.Keysym.Alt_R);
+        const symcaps: xkb.Keysym = @enumFromInt(xkb.Keysym.Caps_Lock);
+        const symnuml: xkb.Keysym = @enumFromInt(xkb.Keysym.Num_Lock);
+        const delt: i8 = if (flag) 1 else -1;
+        switch (sym) {
+            symshl => {
+                keyboard.modifierflags.shiftL +|= delt;
+            },
+            symshr => {
+                keyboard.modifierflags.shiftR +|= delt;
+            },
+            symsul => {
+                keyboard.modifierflags.superL +|= delt;
+            },
+            symsur => {
+                keyboard.modifierflags.superR +|= delt;
+            },
+            symctl => {
+                keyboard.modifierflags.ctrlL +|= delt;
+            },
+            symctr => {
+                keyboard.modifierflags.ctrlR +|= delt;
+            },
+            symnuml => {
+                keyboard.modifierflags.numlock +|= delt;
+            },
+            symcaps => {
+                keyboard.modifierflags.caps +|= delt;
+            },
+            symall => {
+                keyboard.modifierflags.altL +|= delt;
+            },
+            symalr => {
+                keyboard.modifierflags.altR +|= delt;
+            },
+            else => {},
         }
     }
 
@@ -121,13 +232,24 @@ pub const Keyboard = struct {
         return true;
     }
 
+    pub fn addKeyToBufferOut(keyboard: *Keyboard, keyev: KeyEvent) bool {
+        const node_ptr_opt = keyboard.server.alloc.create(DLL.Node) catch null;
+        if (node_ptr_opt) |node_ptr| {
+            node_ptr.* = DLL.Node{ .data = keyev };
+            keyboard.bufferout.append(node_ptr);
+        } else {
+            std.log.err("Could not create DoublyLinkedList node.", .{});
+            return false;
+        }
+        return true;
+    }
+
     pub fn handleKey(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
         const keyboard: *Keyboard = @fieldParentPtr("key", listener);
-
-        // Translate libinput keycode -> xkbcommon
+        const now: u64 = @intCast(std.time.milliTimestamp());
+        // if (keyboard.wlrtimedelay==0)
+        keyboard.wlrtimedelay = now - event.time_msec;
         const keycode = event.keycode + 8;
-        // const keycode = event.keycode;
-        // std.debug.print("keycode: {}\n", .{keycode});
         var keyev = KeyEvent{
             .timems = event.time_msec,
             .keycode = keycode,
@@ -136,57 +258,45 @@ pub const Keyboard = struct {
 
         if (event.state == .pressed) {
             keyboard.listpresstime[keyev.keycode] = keyev.timems;
-            _ = keyboard.addKeyToBufferIn(keyev);
         } else {
             keyev.state = .released;
             keyev.processed = true;
-            //we dont care if releasedkeys are processed or not!
+            //we dont care if releasedkeys are raw or not because they follow their pressed version!
             if (keyboard.bufferin.getPtr(keyboard.listpresstime[keyev.keycode])) |presskey| {
-                presskey.processed = true;
-                _ = keyboard.addKeyToBufferIn(keyev);
-            } else {
-                const node_ptr_opt = keyboard.server.alloc.create(DLL.Node) catch null;
-                if (node_ptr_opt) |node_ptr| {
-                    node_ptr.* = DLL.Node{ .data = keyev };
-                    keyboard.bufferout.append(node_ptr);
+                if (!presskey.processed) {
+                    presskey.processed = true;
+                    if (keyboard.server.config.mapkeys.get(keyev.keysym)) |sym| {
+                        if (keyboard.isSymKeyModifier(sym)) {
+                            const time_held = now - keyboard.wlrtimedelay - presskey.timems;
+                            if (time_held > keyboard.keyholdthreshold) {
+                                presskey.ismodifier = true;
+                                keyev.ismodifier = true;
+                            }
+                        }
+                    }
                 } else {
-                    std.log.err("Could not create DoublyLinkedList node.", .{});
+                    if (presskey.ismodifier) keyev.ismodifier = true;
+                }
+            } else {
+                if (keyboard.listismodifier[keyev.keycode]) {
+                    keyev.ismodifier = true;
+                    keyboard.listismodifier[keyev.keycode] = false;
                 }
             }
-            if (keyboard.server.config.mapmodifiers.get(keyev.keycode)) |keymod| {
-                keyboard.setModifierFlag(keymod, false);
-            }
-            keyboard.listpresstime[keyev.keycode] = 0;
         }
+        _ = keyboard.addKeyToBufferIn(keyev);
 
+        // std.debug.print("handlekey goingout: {}\n", .{std.time.milliTimestamp()});
         // so here we have to first see if there is no modifier or
         // any keymapping available for the keyevent then we should never send it to
         // any function and no need to send them to any buffer. they can immediately go to
         // applicaitons in insert mode and ignored in normal mode, cause they do not do anything!
-        //
+    }
 
-        // var buffer: [8]u8 = undefined;
-        // const len = xkb.State.keyGetUtf8(wlrkeyboard.xkb_state.?, keycode, &buffer);
-        // const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
-
-        //added code for the printing all the keys
-        // const symo = wlrkeyboard.xkb_state.?.keyGetOneSym(keycode);
-        // const sym_name = xkb.Keymap.keyGetName(wlrkeyboard.xkb_state.?.getKeymap(), keycode);
-        // const state_str = if (event.state == .pressed) "press" else "release";
-
-        // Log the key event
-        // std.log.info("Key {s}: code={} sym={s} ({x})", .{
-        // state_str,
-        // keycode,
-        // char,
-        // @intFromEnum(symo),
-        // });
-
-        // if (!handled) {
-        // sending to application for handling the key event!
-        // server.seat.setKeyboard(keyboard.wlrkeyboard);
-        // server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
-        // }
+    pub fn updateModifiers(keyboard: *Keyboard, sym: xkb.Keysym) void {
+        keyboard.wlrkeyboard.modifiers.depressed |= ~@intFromEnum(sym);
+        const modifiers = &keyboard.wlrkeyboard.modifiers;
+        keyboard.server.seat.keyboardNotifyModifiers(modifiers);
     }
 
     pub fn handleDestroy(listener: *wl.Listener(void)) void {
@@ -229,13 +339,6 @@ pub const Keyboard = struct {
             xkb.Keysym.Escape => {
                 keyboard.server.deinit();
             },
-            // Focus the next toplevel in the stack, pushing the current top to the back
-            // xkb.Keysym.F1 => {
-            // std.log.info("Key F1 pressed", .{});
-            // if (server.workspaces.items[server.workspace_cur].toplevels.items.len < 2) return true;
-            // const toplevel: *Toplevel = @fieldParentPtr("link", server.workspaces.items[server.workspace_cur].toplevels.link.prev.?);
-            // server.focusView(toplevel, toplevel.xdg_toplevel.base.surface);
-            // },
             else => return false,
         }
         return true;
@@ -244,54 +347,45 @@ pub const Keyboard = struct {
 
 pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
     const bufferin = &keyboard.bufferin;
-    // const bufferout = &keyboard.bufferout;
-
-    // Start at the head of the ordered list
     var current_key = bufferin.head;
     while (current_key) |key| {
-        // Capture next key BEFORE any potential removal
         const next_key = blk: {
             const node = bufferin.map.get(key) orelse break :blk null;
             break :blk node.next;
         };
-        // Check if the key still exists (may have been removed earlier)
         const keyev_ptr = bufferin.map.getPtr(key) orelse {
             current_key = next_key;
             continue;
         };
 
-        // Condition 1: Check if the key event is unprocessed
-        if (!keyev_ptr.value.processed) {
-            // std.debug.print("here is keycheck: {}\n",.{keyev_ptr.value.keycode});
-            // Condition 2: Check if it's a modifier key with hold time exceeded
-            if (keyboard.server.config.mapmodifiers.get(keyev_ptr.value.keycode)) |keymod| {
-                const now: u64 = @intCast(std.time.milliTimestamp());
-                const time_held = now - keyboard.listpresstime[keyev_ptr.value.keycode];
-
-                if (time_held > keyboard.keyholdthreshold) {
-                    // Mark as processed and update modifier
-                    keyboard.setModifierFlag(keymod, true);
-                    std.debug.print("we have a flag change to true\n", .{});
-                    keyev_ptr.value.processed = true;
-                } else {
-                    // Stop processing entirely (condition failed)
-                    break;
-                }
+        if (keyboard.server.config.mapkeys.get(keyev_ptr.value.keysym)) |sym| {
+            if (!keyev_ptr.value.processed) {
+                if (keyboard.isSymKeyModifier(sym)) {
+                    const now: u64 = @intCast(std.time.milliTimestamp());
+                    const time_held = now - keyboard.wlrtimedelay - keyev_ptr.value.timems;
+                    if (time_held > keyboard.keyholdthreshold) {
+                        keyev_ptr.value.ismodifier = true;
+                        keyboard.listismodifier[keyev_ptr.value.keycode] = true;
+                        keyev_ptr.value.processed = true; // does not send this to app. just remove it
+                    } else {
+                        break;
+                    }
+                } else keyev_ptr.value.processed = true;
+            }
+        } else {
+            keyev_ptr.value.processed = true;
+            if (keyboard.isSymKeyModifier(keyev_ptr.value.keysym)) {
+                keyev_ptr.value.ismodifier = true;
             }
         }
 
         if (keyev_ptr.value.processed) {
-            const node_ptr_opt = keyboard.server.alloc.create(DLL.Node) catch null;
-            if (node_ptr_opt) |node_ptr| {
-                node_ptr.* = DLL.Node{ .data = keyev_ptr.value };
-                keyboard.bufferout.append(node_ptr);
-            } else {
-                std.log.err("Could not create DoublyLinkedList node.", .{});
-            }
+            _ = keyboard.addKeyToBufferOut(keyev_ptr.value);
             _ = bufferin.remove(key);
         } else {
+            std.log.err("Error, found a key which is not been processed but is supposed to be processed.", .{});
             // Stop processing (found an unprocessed key that doesn't meet conditions)
-            break;
+            // break;
         }
 
         current_key = next_key;
@@ -299,26 +393,33 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
 
     keyboard.server.seat.setKeyboard(keyboard.wlrkeyboard);
 
-    // std.debug.print("bufferout length: {}\n",.{keyboard.bufferout.len});
     var idx: usize = keyboard.bufferout.len;
     while (idx > 0) : (idx -= 1) {
         if (keyboard.bufferout.popFirst()) |node| {
             const event = node.data;
             var handled = false;
-            if ((keyboard.wlrkeyboard.getModifiers().logo or keyboard.modifierflags.logo) and event.state == .pressed) {
-                std.debug.print("here logo is pressed!\n", .{});
-                if (keyboard.handleKeybind(event.keysym)) {
-                    handled = true;
-                    break;
+            if (!event.ismodifier) {
+                if (keyboard.modifierflags.superL > 0 and event.state == .pressed) {
+                    if (keyboard.handleKeybind(event.keysym)) {
+                        handled = true;
+                        std.debug.print("here is the handled key: {}\n", .{event.keycode});
+                    }
+                }
+                if (!handled) {
+                    std.debug.print("here is the not handled key: {}\n", .{event.keycode});
+                    //for now this -8 is good. probably should change it when it is loaded
+                    //on its own rather than being called in x11.
+                    keyboard.server.seat.keyboardNotifyKey(event.timems, event.keycode - 8, if (event.state == .pressed) .pressed else .released);
+                }
+            } else {
+                if (keyboard.server.config.mapkeys.get(event.keysym)) |sym| {
+                    keyboard.setModifierFlags(sym, event.state == .pressed);
+                    keyboard.updateModifiers(sym);
+                } else {
+                    keyboard.setModifierFlags(event.keysym, event.state == .pressed);
+                    keyboard.updateModifiers(event.keysym);
                 }
             }
-            std.debug.print("keyboard notification will happen: {}\n", .{event.keycode});
-            // Send the key event to applications
-            if (!handled) {
-                keyboard.server.seat.keyboardNotifyKey(event.timems, event.keycode, if (event.state == .pressed) .pressed else .released);
-            }
-            // keyboard.server.alloc.destroy(node);
-            std.debug.print("poping happened: {}\n", .{event.keycode});
         }
     }
 
@@ -329,50 +430,21 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
         handleKeyCheckTimeOut,
         keyboard,
     );
-
     return 0;
 }
+// const len = xkb.State.keyGetUtf8(wlrkeyboard.xkb_state.?, keycode, &buffer);
+// const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
 
-pub fn processKeymap(keyboard: *Keyboard) void {
-    //here wek
-    _ = keyboard;
-}
+//added code for the printing all the keys
+// const symo = wlrkeyboard.xkb_state.?.keyGetOneSym(keycode);
+// const sym_name = xkb.Keymap.keyGetName(wlrkeyboard.xkb_state.?.getKeymap(), keycode);
+// const state_str = if (event.state == .pressed) "press" else "release";
 
-pub fn findAction(keyboard: *Keyboard) !void {
-    // const wlrkeyboard = keyboard.device.toKeyboard();
-    var str: std.ArrayList(u8) = std.ArrayList(u8).init(keyboard.server.alloc);
-    var i: usize = keyboard.bufferin.items.len - 1;
-    while (i >= 0) : (i -= 1) {
-        const keyev = keyboard.bufferin.items[i];
-        if (keyev.state == .pressed) {
-            var buffer: [8]u8 = undefined;
-            const len = xkb.State.keyGetUtf8(keyboard.wlrkeyboard.xkb_state.?, keyev.keycode, &buffer);
-            const char = if (len > 0) buffer[0..@intCast(len)] else ""; // Get the actual character
-            // std.debug.print("{s}\n", .{buffer});
-            if (char.len > 0) try str.append(char[0]);
-        } else {
-            if (i == 0) break;
-            var j: usize = i - 1;
-            while (j >= 0) : (j -= 1) {
-                const keyev2 = keyboard.bufferin.items[j];
-                // what happens to multiple keyboards??
-                if (keyev.keycode == keyev2.keycode and keyev2.state == .pressed) {
-                    const duration = keyev.presstime - keyev2.presstime;
-                    if (duration >= keyboard.keyholddelay) {
-                        // here is homerow action.
-                        if (keyboard.server.config.mapmodifiers.get(keyev.keycode)) |value| {
-                            //we have to write a code that checks if this value is a modifier!
-                            if (value.logo) {
-                                std.debug.print("pressed super!{}\n", .{value});
-                            } else if (value.ctrl) {} else if (value.caps) {} else if (value.alt) {} else if (value.shift) {} else if (value.mod2) {} else if (value.mod3) {} else if (value.mod5) {}
-                        }
-                    }
-                    // if (j > 0) i = j - 1;
-                    break;
-                }
-                if (j == 0) break;
-            }
-        }
-        if (i == 0) break;
-    }
-}
+// Log the key event
+// std.log.info("Key {s}: code={} sym={s} ({x})", .{
+// state_str,
+// keycode,
+// char,
+// @intFromEnum(symo),
+// });
+// var buffer: [8]u8 = undefined;
