@@ -81,14 +81,6 @@ pub const Server = struct {
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
         server.config = try config.loadConfig(gpa);
-        const symg: xkb.Keysym = @enumFromInt(xkb.Keysym.g);
-        const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
-        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
-        const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
-        try server.config.mapkeys.put(symg, symshl);
-        // try server.config.mapkeys.put(xkb.Keysym.f, xkb.Keysym.Super_L);
-        try server.config.mapkeys.put(symf, symsupl);
-        // server.config = try config.loadConfig(server.alloc);
         server.setUpConfig();
         // server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
@@ -159,8 +151,28 @@ pub const Server = struct {
     }
 
     pub fn setUpConfig(server: *Server) void {
-        server.workspace_num = 1;
-        server.workspace_cur = 0;
+        const symg: xkb.Keysym = @enumFromInt(xkb.Keysym.g);
+        const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
+        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
+        const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
+        server.config.mapkeys.put(symg, symshl) catch {};
+        server.config.mapkeys.put(symf, symsupl) catch {};
+
+        if (server.config.mapconfigs.get("workspace_num")) |buf| {
+            server.workspace_num = std.fmt.parseInt(u8, buf, 10) catch 1;
+        }else server.workspace_num=1;
+        std.debug.print("workspace_num: {}\n",.{server.workspace_num}); 
+
+        if (server.config.mapconfigs.get("workspace_cur")) |buf| {
+            server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
+        }else server.workspace_cur=0;
+        std.debug.print("workspace_cur: {}\n",.{server.workspace_cur}); 
+
+        // var it = server.config.mapconfigs.iterator();
+        // while (it.next()) |entry| {
+            // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+        // }
+        // std.process.exit(0);
     }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -318,13 +330,6 @@ pub const Server = struct {
     }
 
     pub fn switchWS(server: *Server, workspace_pre: usize) void {
-        // var wi: usize = 0;
-        // while (wi < server.workspaces.items.len) : (wi += 1) {
-        // if (wi == server.workspace_cur) continue;
-        // for (server.workspaces.items[wi].toplevels.items) |toplvl| {
-        // toplvl.scene_tree.node.setEnabled(false);
-        // }
-        // }
         for (server.workspaces.items[workspace_pre].toplevels.items) |toplvl| {
             toplvl.scene_tree.node.setEnabled(false); // show window
         }

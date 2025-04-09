@@ -31,7 +31,6 @@ pub const Config = struct {
     layouts: std.ArrayList(Layout),
     mapconfigs: std.StringHashMap([]const u8),
     mapkeys: std.AutoHashMap(xkb.Keysym, xkb.Keysym),
-    // keypressarr: [256]u32,
     mapappkeys: std.StringHashMap(AppMessage),
 };
 
@@ -148,9 +147,10 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
     for (cmds.items) |cmd| {
         if (cmd.len == 0) continue;
         const keywords: [4][]const u8 = .{ "loadLayout", "act", "config", "pass" };
+        const cmd_trimmed = std.mem.trim(u8, cmd, " \t\r");
         for (keywords, 0..) |keyword, i| {
-            if (std.mem.startsWith(u8, cmd, keyword)) {
-                const slice = cmd[keyword.len..cmd.len];
+            if (std.mem.startsWith(u8, cmd_trimmed, keyword)) {
+                const slice = cmd_trimmed[keyword.len..cmd_trimmed.len];
                 const trimmed_slice = std.mem.trim(u8, slice, " \t\r");
                 switch (i) {
                     0 => {
@@ -175,7 +175,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                         if (conf_toks.next()) |next| {
                             if (conf_toks.next()) |next2| {
                                 // checking length of next and next2 for error also is good
-                                config.mapconfigs.put(next, next2) catch |e| {
+                                config.mapconfigs.put(std.mem.trim(u8, next, " \t\r"), std.mem.trim(u8, next2, " \t\r")) catch |e| {
                                     std.debug.print("error: {}\n", .{e});
                                 };
                             } else {
