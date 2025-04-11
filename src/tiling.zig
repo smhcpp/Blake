@@ -3,11 +3,12 @@ const std = @import("std");
 const wlr = @import("wlroots");
 const Toplevel = @import("toplevel.zig").Toplevel;
 const config = @import("config.zig");
+const sumSize=@import("utility.zig").sumSize;
 
 pub fn refreshLayout(server: *Server) void {
     const num = server.workspaces.items[server.workspace_cur].toplevels.items.len;
     if (num == 0) return;
-    const origin = config.sumSize(usize, num - 1);
+    const origin = sumSize(usize, num - 1);
     const boxs = server.config.layouts.items[server.workspaces.items[server.workspace_cur].layout_cur].boxs.items;
     var screen: wlr.Box = undefined;
     server.output_layout.getBox(null, &screen);

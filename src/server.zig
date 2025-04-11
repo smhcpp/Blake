@@ -155,22 +155,30 @@ pub const Server = struct {
         const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
         const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
         const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
-        server.config.mapkeys.put(symg, symshl) catch {};
-        server.config.mapkeys.put(symf, symsupl) catch {};
+        const mapsul: config.Keymap = config.Keymap{
+            .hold = symsupl,
+        };
+        const mapshl: config.Keymap = config.Keymap{
+            .hold = symshl,
+        };
+        server.config.keymaps.put(symg, mapshl) catch {};
+        server.config.keymaps.put(symf, mapsul) catch {};
 
-        if (server.config.mapconfigs.get("workspace_num")) |buf| {
+        if (server.config.configs.get("workspace_num")) |buf| {
             server.workspace_num = std.fmt.parseInt(u8, buf, 10) catch 1;
-        }else server.workspace_num=1;
-        std.debug.print("workspace_num: {}\n",.{server.workspace_num}); 
+        } else server.workspace_num = 1;
+        // std.debug.print("workspace_num: {}\n",.{server.workspace_num});
 
-        if (server.config.mapconfigs.get("workspace_cur")) |buf| {
+        if (server.config.configs.get("workspace_cur")) |buf| {
             server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
-        }else server.workspace_cur=0;
-        std.debug.print("workspace_cur: {}\n",.{server.workspace_cur}); 
-
-        // var it = server.config.mapconfigs.iterator();
+        } else server.workspace_cur = 0;
+        // std.debug.print("workspace_cur: {}\n",.{server.workspace_cur});
+        if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
+            std.debug.print("Found node with {any} apps\n", .{node.appnames.items});
+        }
+        // var it = server.config.configs.iterator();
         // while (it.next()) |entry| {
-            // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+        // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
         // }
         // std.process.exit(0);
     }

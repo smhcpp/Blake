@@ -27,12 +27,8 @@ pub const KeyEvent = struct {
     keycode: u32,
     timems: u32 = 0, // Use event.time_msec from wlroots
     state: enum { pressed, released } = .pressed,
-    // processed: enum { raw, notmodifier, modifier } = .raw,
     processed: bool = false,
-    // out: bool = false,
     ismodifier: bool = false,
-    // raw: not processed at all, notmodifier: processed but not a modifier,
-    // modifier: processed and it is a modifier
 };
 
 pub const Keyboard = struct {
@@ -265,12 +261,15 @@ pub const Keyboard = struct {
             if (keyboard.bufferin.getPtr(keyboard.listpresstime[keyev.keycode])) |presskey| {
                 if (!presskey.processed) {
                     presskey.processed = true;
-                    if (keyboard.server.config.mapkeys.get(keyev.keysym)) |sym| {
-                        if (keyboard.isSymKeyModifier(sym)) {
-                            const time_held = now - keyboard.wlrtimedelay - presskey.timems;
-                            if (time_held > keyboard.keyholdthreshold) {
-                                presskey.ismodifier = true;
-                                keyev.ismodifier = true;
+                    if (keyboard.server.config.keymaps.get(keyev.keysym)) |map| {
+                        const ss: xkb.Keysym = @enumFromInt(0);
+                        if (map.hold != ss) {
+                            if (keyboard.isSymKeyModifier(map.hold)) {
+                                const time_held = now - keyboard.wlrtimedelay - presskey.timems;
+                                if (time_held > keyboard.keyholdthreshold) {
+                                    presskey.ismodifier = true;
+                                    keyev.ismodifier = true;
+                                }
                             }
                         }
                     }
@@ -285,12 +284,6 @@ pub const Keyboard = struct {
             }
         }
         _ = keyboard.addKeyToBufferIn(keyev);
-
-        // std.debug.print("handlekey goingout: {}\n", .{std.time.milliTimestamp()});
-        // so here we have to first see if there is no modifier or
-        // any keymapping available for the keyevent then we should never send it to
-        // any function and no need to send them to any buffer. they can immediately go to
-        // applicaitons in insert mode and ignored in normal mode, cause they do not do anything!
     }
 
     pub fn updateModifiers(keyboard: *Keyboard, sym: xkb.Keysym) void {
@@ -348,6 +341,8 @@ pub const Keyboard = struct {
 pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
     const bufferin = &keyboard.bufferin;
     var current_key = bufferin.head;
+    //  first analyse the bufferin and move the ones processed to bufferout.
+    //  then in next loop, send some to apps and keep the ones targetted at compositor
     while (current_key) |key| {
         const next_key = blk: {
             const node = bufferin.map.get(key) orelse break :blk null;
@@ -358,19 +353,22 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
             continue;
         };
 
-        if (keyboard.server.config.mapkeys.get(keyev_ptr.value.keysym)) |sym| {
-            if (!keyev_ptr.value.processed) {
-                if (keyboard.isSymKeyModifier(sym)) {
-                    const now: u64 = @intCast(std.time.milliTimestamp());
-                    const time_held = now - keyboard.wlrtimedelay - keyev_ptr.value.timems;
-                    if (time_held > keyboard.keyholdthreshold) {
-                        keyev_ptr.value.ismodifier = true;
-                        keyboard.listismodifier[keyev_ptr.value.keycode] = true;
-                        keyev_ptr.value.processed = true; // does not send this to app. just remove it
-                    } else {
-                        break;
-                    }
-                } else keyev_ptr.value.processed = true;
+        if (keyboard.server.config.keymaps.get(keyev_ptr.value.keysym)) |map| {
+            const ss: xkb.Keysym = @enumFromInt(0);
+            if (map.hold != ss) {
+                if (!keyev_ptr.value.processed) {
+                    if (keyboard.isSymKeyModifier(map.hold)) {
+                        const now: u64 = @intCast(std.time.milliTimestamp());
+                        const time_held = now - keyboard.wlrtimedelay - keyev_ptr.value.timems;
+                        if (time_held > keyboard.keyholdthreshold) {
+                            keyev_ptr.value.ismodifier = true;
+                            keyboard.listismodifier[keyev_ptr.value.keycode] = true;
+                            keyev_ptr.value.processed = true; // does not send this to app. just remove it
+                        } else {
+                            break;
+                        }
+                    } else keyev_ptr.value.processed = true;
+                }
             }
         } else {
             keyev_ptr.value.processed = true;
@@ -384,7 +382,6 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
             _ = bufferin.remove(key);
         } else {
             std.log.err("Error, found a key which is not been processed but is supposed to be processed.", .{});
-            // Stop processing (found an unprocessed key that doesn't meet conditions)
             // break;
         }
 
@@ -412,9 +409,12 @@ pub fn handleKeyCheckTimeOut(keyboard: *Keyboard) c_int {
                     keyboard.server.seat.keyboardNotifyKey(event.timems, event.keycode - 8, if (event.state == .pressed) .pressed else .released);
                 }
             } else {
-                if (keyboard.server.config.mapkeys.get(event.keysym)) |sym| {
-                    keyboard.setModifierFlags(sym, event.state == .pressed);
-                    keyboard.updateModifiers(sym);
+                if (keyboard.server.config.keymaps.get(event.keysym)) |map| {
+                    const ss: xkb.Keysym = @enumFromInt(0);
+                    if (map.hold != ss) {
+                        keyboard.setModifierFlags(map.hold, event.state == .pressed);
+                        keyboard.updateModifiers(map.hold);
+                    }
                 } else {
                     keyboard.setModifierFlags(event.keysym, event.state == .pressed);
                     keyboard.updateModifiers(event.keysym);

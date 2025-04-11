@@ -1,6 +1,48 @@
 const std = @import("std");
 const xkb = @import("xkbcommon");
 const wlr = @import("wlroots");
+const utility = @import("utility.zig");
+
+pub const Keymap = struct {
+    tap: xkb.Keysym = @enumFromInt(0),
+    hold: xkb.Keysym = @enumFromInt(0),
+};
+
+pub const ModKeyValue = struct {
+    ShtL: u32 = 1 << 0,
+    ShtR: u32 = 1 << 1,
+    CtrL: u32 = 1 << 2,
+    CtrR: u32 = 1 << 3,
+    AltL: u32 = 1 << 4,
+    AltR: u32 = 1 << 5,
+    SupL: u32 = 1 << 6,
+    SupR: u32 = 1 << 7,
+    Cap: u32 = 1 << 8,
+    Num: u32 = 1 << 9,
+    Tab: u32 = 1 << 10,
+    Esc: u32 = 1 << 11,
+    BS: u32 = 1 << 12,
+    CR: u32 = 1 << 13,
+    // 14-19
+    F1: u32 = 1 << 20,
+    F2: u32 = 1 << 21,
+    F3: u32 = 1 << 22,
+    F4: u32 = 1 << 23,
+    F5: u32 = 1 << 24,
+    F6: u32 = 1 << 25,
+    F7: u32 = 1 << 26,
+    F8: u32 = 1 << 27,
+    F9: u32 = 1 << 28,
+    F10: u32 = 1 << 29,
+    F11: u32 = 1 << 30,
+    F12: u32 = 1 << 31,
+};
+
+pub const ListModNames: [32][]const u8 = .{
+    "ShtL", "ShtR", "CtrL", "CtrR", "AltL", "AltR", "SupL", "SupR", "Cap", "Num", "Tab", "Esc", "BS",
+    "CR",   " ",    " ",    " ",    " ",    " ",    " ",    "F1",   "F2",  "F3",  "F4",  "F5",  "F6",
+    "F7",   "F8",   "F9",   "F10",  "F11",  "F12",
+};
 
 pub const ConfigError = error{
     MapNotFound,
@@ -21,17 +63,11 @@ pub fn getMode(char: u8) !Mode {
     return ConfigError.WrongMode;
 }
 
-pub const AppMessage = struct {
-    names: std.ArrayList([]const u8),
-    mode: Mode,
-    key: []const u8,
-};
-
 pub const Config = struct {
     layouts: std.ArrayList(Layout),
-    mapconfigs: std.StringHashMap([]const u8),
-    mapkeys: std.AutoHashMap(xkb.Keysym, xkb.Keysym),
-    mapappkeys: std.StringHashMap(AppMessage),
+    configs: std.StringHashMap([]const u8),
+    keymaps: std.AutoHashMap(xkb.Keysym, Keymap),
+    binds: *utility.KeyBindNode,
 };
 
 pub const Layout = struct {
@@ -39,15 +75,6 @@ pub const Layout = struct {
     size: u8,
     boxs: std.ArrayList([4]f32),
 };
-
-pub fn sumSize(comptime T: type, n: T) T {
-    var sum: T = 0;
-    var i: T = 1;
-    while (i <= n) : (i = i + 1) {
-        sum = sum + i;
-    }
-    return sum;
-}
 
 fn splitCmds(allocator: std.mem.Allocator, s: []const u8, char: u8) std.ArrayList([]const u8) {
     var cmds = std.ArrayList([]const u8).init(allocator);
@@ -119,9 +146,9 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
     var lines = std.mem.splitScalar(u8, input, '\n');
     var config = Config{
         .layouts = std.ArrayList(Layout).init(allocator),
-        .mapconfigs = std.StringHashMap([]const u8).init(allocator),
-        .mapappkeys = std.StringHashMap(AppMessage).init(allocator),
-        .mapkeys = std.AutoHashMap(xkb.Keysym, xkb.Keysym).init(allocator),
+        .configs = std.StringHashMap([]const u8).init(allocator),
+        .keymaps = std.AutoHashMap(xkb.Keysym, Keymap).init(allocator),
+        .binds = try utility.KeyBindNode.init(allocator),
     };
     var joined_commands = std.ArrayList(u8).init(allocator);
     defer joined_commands.deinit();
@@ -146,7 +173,7 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
 
     for (cmds.items) |cmd| {
         if (cmd.len == 0) continue;
-        const keywords: [4][]const u8 = .{ "loadLayout", "act", "config", "pass" };
+        const keywords: [5][]const u8 = .{ "loadLayout", "act", "config", "bind", "keymap" };
         const cmd_trimmed = std.mem.trim(u8, cmd, " \t\r");
         for (keywords, 0..) |keyword, i| {
             if (std.mem.startsWith(u8, cmd_trimmed, keyword)) {
@@ -175,8 +202,8 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                         if (conf_toks.next()) |next| {
                             if (conf_toks.next()) |next2| {
                                 // checking length of next and next2 for error also is good
-                                config.mapconfigs.put(std.mem.trim(u8, next, " \t\r"), std.mem.trim(u8, next2, " \t\r")) catch |e| {
-                                    std.debug.print("error: {}\n", .{e});
+                                config.configs.put(std.mem.trim(u8, next, " \t\r"), std.mem.trim(u8, next2, " \t\r")) catch |e| {
+                                    std.debug.print("Could not put the config in the config map: {}\n", .{e});
                                 };
                             } else {
                                 //some other error
@@ -188,22 +215,24 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
                     3 => {
                         const pass_toks = splitCmds(allocator, trimmed_slice[1 .. trimmed_slice.len - 1], ',');
                         if (pass_toks.items.len == 4) {
-                            const mode = try getMode(std.mem.trim(u8, pass_toks.items[0], " \t\r")[0]);
-                            const key = std.mem.trim(u8, pass_toks.items[2], " \t\r");
+                            // const mode = try getMode(std.mem.trim(u8, pass_toks.items[0], " \t\r")[0]);
+                            const cmdout = std.mem.trim(u8, pass_toks.items[2], " \t\r");
                             var apps = std.ArrayList([]const u8).init(allocator);
                             const tempo = std.mem.trim(u8, pass_toks.items[3], " \r\t");
                             var pass_apps = std.mem.splitScalar(u8, tempo[1 .. tempo.len - 1], ',');
+                            const cmdin = std.mem.trim(u8, pass_toks.items[1], " \t\r");
                             while (pass_apps.next()) |app| {
                                 const valid_app = std.mem.trim(u8, app, " \t\r");
                                 try apps.append(valid_app[1 .. valid_app.len - 1]);
-                                std.debug.print("{s}\n", .{valid_app[1 .. valid_app.len - 1]});
                             }
-                            const msg = AppMessage{
-                                .mode = mode,
-                                .key = key,
-                                .names = apps,
-                            };
-                            try config.mapappkeys.put(std.mem.trim(u8, pass_toks.items[1], " \t\r"), msg);
+                            const cmdinp = parseKey(allocator, cmdin);
+                            const cmdoutp = parseKey(allocator, cmdout);
+                            if (cmdinp.len != 0 and cmdoutp.len != 0) {
+                                const apps_ = apps.toOwnedSlice() catch &[_][]const u8{};
+                                _ = try config.binds.insert(cmdinp, cmdoutp, apps_);
+                            } else {
+                                //some error
+                            }
                         } else {
                             //some error
                         }
@@ -214,6 +243,108 @@ fn parseConfig(allocator: std.mem.Allocator, input: []const u8) !Config {
         }
     }
     return config;
+}
+
+pub fn parseKey(allocator: std.mem.Allocator, input: []const u8) []const u64 {
+    var inDeep: bool = false;
+    var cur: std.ArrayList(u8) = std.ArrayList(u8).init(allocator);
+    defer cur.deinit();
+    var keys: std.ArrayList([]const u8) = std.ArrayList([]const u8).init(allocator);
+    defer keys.deinit();
+    // std.debug.print("char keycode: {}, {}\n", .{ 'A', 'Z' });
+    for (input) |c| {
+        switch (c) {
+            '<' => {
+                if (inDeep) {
+                    // print there is an error here we cannot have
+                    // multiple level of < >
+                }
+                inDeep = true;
+                const temp = cur.toOwnedSlice() catch "";
+                if (temp.len > 0) {
+                    const tempo = allocator.dupe(u8, temp) catch "";
+                    keys.append(tempo) catch {
+                        // some error here
+                    };
+                }
+            },
+            '>' => {
+                inDeep = false;
+                const temp = cur.toOwnedSlice() catch "";
+                if (temp.len > 0) {
+                    const tempo = allocator.dupe(u8, temp) catch "";
+                    keys.append(tempo) catch {
+                        // some error here
+                    };
+                    // std.debug.print("tempo: {s}\n",.{tempo});
+                }
+            },
+            ' ', '\t', '\r', '"' => {
+                //do nothing, skip them
+            },
+            else => {
+                //
+                cur.append(c) catch {
+                    // some error
+                };
+            },
+        }
+    }
+
+    var cmds: std.ArrayList(u64) = std.ArrayList(u64).init(allocator);
+    for (keys.items) |k| {
+        switch (k.len) {
+            0 => {
+                //continue
+            },
+            1 => {
+                const cmd = 0;
+                cmds.append(cmd) catch {
+                    //some error
+                };
+            },
+            else => {
+                var ts = std.mem.tokenizeAny(u8, k, "-");
+                var modifiers: u32 = 0;
+                var sym: u32 = 0;
+                while (ts.next()) |t| {
+                    switch (t.len) {
+                        0 => {},
+                        1 => {
+                            const tptr: [*:0]const u8 = @ptrCast(t.ptr);
+                            const symo = xkb.Keysym.fromName(tptr, @enumFromInt(0));
+                            const co = @intFromEnum(symo);
+                            // std.debug.print("type of cmd: {}", .{@TypeOf(co)});
+                            sym = co;
+                        },
+                        else => {
+                            var ind: u8 = 255;
+                            for (ListModNames, 0..) |lmn, idx| {
+                                if (std.mem.startsWith(u8, t, lmn)) {
+                                    ind = @intCast(idx);
+                                    break;
+                                }
+                            }
+                            if (ind != 255) {
+                                modifiers |= @as(u32, 1) << @intCast(ind);
+                            } else {
+                                // some error
+                            }
+                        },
+                    }
+                }
+                const modifiers64: u64 = @intCast(modifiers);
+                const sym64: u64 = @intCast(sym);
+                const cmd: u64 = modifiers64 << 32 | sym64;
+                cmds.append(cmd) catch {
+                    // some error
+                };
+            },
+        }
+    }
+    const cmdsr = cmds.toOwnedSlice() catch &[_]u64{};
+    cmds.deinit();
+    return cmdsr;
 }
 
 fn parseSet(allocator: std.mem.Allocator, input: []const u8) !void {
@@ -273,3 +404,37 @@ fn parseLayout(allocator: std.mem.Allocator, input: []const u8, layout_name: []c
     };
     return layout;
 }
+
+pub const ModKeyName = struct {
+    AltR: []u8 = "AltR",
+    AltL: []u8 = "AltL",
+    CtrL: []u8 = "CtrL",
+    CtrR: []u8 = "CtrR",
+    ShtL: []u8 = "ShtL",
+    ShtR: []u8 = "ShtR",
+    SupR: []u8 = "SupR",
+    SupL: []u8 = "SupL",
+    Cap: []u8 = "Cap",
+    Num: []u8 = "Num",
+    Tab: []u8 = "Tab",
+    Esc: []u8 = "Esc",
+    BS: []u8 = "BS",
+
+    F1: []u8 = "F1",
+    F2: []u8 = "F2",
+    F3: []u8 = "F3",
+    F4: []u8 = "F4",
+    F5: []u8 = "F5",
+    F6: []u8 = "F6",
+    F7: []u8 = "F7",
+    F8: []u8 = "F8",
+    F9: []u8 = "F9",
+    F10: []u8 = "F10",
+    F11: []u8 = "F11",
+    F12: []u8 = "F12",
+};
+
+// pub const KeyCommand = struct {
+// modifiers: u32 = 0,
+// keysym: xkb.Keysym,
+// };

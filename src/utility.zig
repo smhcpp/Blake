@@ -1,4 +1,15 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+const logkbn = std.log.scoped(.KeyBindNode);
+
+pub fn sumSize(comptime T: type, n: T) T {
+    var sum: T = 0;
+    var i: T = 1;
+    while (i <= n) : (i = i + 1) {
+        sum = sum + i;
+    }
+    return sum;
+}
 
 pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
     return struct {
@@ -14,7 +25,7 @@ pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
             next: ?K,
         };
 
-        pub fn init(allocator: std.mem.Allocator) Self {
+        pub fn init(allocator: Allocator) Self {
             return .{
                 .map = std.AutoHashMap(K, Node).init(allocator),
                 .head = null,
@@ -27,7 +38,6 @@ pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
         }
 
         pub fn put(self: *Self, key: K, value: V) !void {
-            // Remove the key from its current position if it exists
             if (self.map.contains(key)) {
                 self.removeFromList(key);
             }
@@ -40,23 +50,16 @@ pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
 
             try self.map.put(key, node);
 
-            // Update the previous tail's next pointer
             if (self.tail) |tail_key| {
                 if (self.map.getPtr(tail_key)) |tail_node| {
                     tail_node.next = key;
                 }
             } else {
-                // The list was empty, update head
                 self.head = key;
             }
 
-            // Update tail to the new key
             self.tail = key;
         }
-
-        // pub fn count(self: *const Self) usize {
-        // return self.map.count();
-        // }
 
         pub fn get(self: *const Self, key: K) ?V {
             const node = self.map.get(key) orelse return null;
@@ -127,3 +130,124 @@ pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
         };
     };
 }
+
+pub const KeyBindNode = struct {
+    branches: std.AutoHashMap(u64, *KeyBindNode),
+    cmdout: []const u64,
+    appnames: std.ArrayList([]const u8),
+    allocator: Allocator,
+
+    /// Initialize a new node
+    pub fn init(allocator: Allocator) !*KeyBindNode {
+        const node = try allocator.create(KeyBindNode); 
+        node.* = .{
+            .branches = std.AutoHashMap(u64, *KeyBindNode).init(allocator),
+            .cmdout = &.{},
+            .appnames = std.ArrayList([]const u8).init(allocator),
+            .allocator = allocator,
+        };
+        return node;
+    }
+
+    /// Recursively free memory
+    pub fn deinit(self: *KeyBindNode) void {
+        var iter = self.branches.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        self.branches.deinit();
+        
+        if (self.cmdout.len > 0) {
+            self.allocator.free(self.cmdout);
+        }
+        
+        for (self.appnames.items) |name| {
+            self.allocator.free(name);
+        }
+        self.appnames.deinit();
+        self.allocator.destroy(self);
+    }
+
+    /// Insert a command sequence with associated data
+    pub fn insert(
+        self: *KeyBindNode,
+        sequence: []const u64,
+        cmdout: []const u64,
+        appnames: []const []const u8
+    ) !void {
+        var current = self;
+        for (sequence) |cmd| {
+            const next = current.branches.get(cmd) orelse blk: {
+                const node = try KeyBindNode.init(current.allocator); 
+                current.branches.put(cmd, node) catch |err| {
+                    logkbn.err("Failed to insert command 0x{x}: {s}", .{cmd, @errorName(err)});
+                    node.deinit();
+                };
+                break :blk node;
+            };
+            current = next;
+        }
+        _= current.updateBoth(cmdout, appnames);
+    }
+
+    /// Update appnames with new values
+    pub fn updateAppNames(self: *KeyBindNode, new_appnames: []const []const u8) bool {
+        // Clear existing
+        for (self.appnames.items) |name| {
+            self.allocator.free(name);
+        }
+        self.appnames.clearAndFree();
+
+        // Add new
+        for (new_appnames) |name| {
+            const name_copy = self.allocator.dupe(u8, name) catch |err| {
+                logkbn.err("Failed to duplicate appname '{s}': {s}", .{name, @errorName(err)});
+                return false;
+            };
+            self.appnames.append(name_copy) catch |err| {
+                self.allocator.free(name_copy);
+                logkbn.err("Failed to store appname '{s}': {s}", .{name, @errorName(err)});
+                return false;
+            };
+        }
+        return true;
+    }
+
+    /// Update cmdout with new values
+    pub fn updateCmdOut(self: *KeyBindNode, new_cmdout: []const u64) bool {
+        if (self.cmdout.len > 0) {
+            self.allocator.free(self.cmdout);
+        }
+        self.cmdout = self.allocator.dupe(u64, new_cmdout) catch |err| {
+            logkbn.err("Failed to duplicate cmdout: {s}", .{@errorName(err)});
+            self.cmdout = &.{};
+            return false;
+        };
+        return true;
+    }
+
+    /// Update both fields at once
+    pub fn updateBoth(self: *KeyBindNode, new_cmdout: []const u64, new_appnames: []const []const u8) bool {
+        return self.updateCmdOut(new_cmdout) and self.updateAppNames(new_appnames);
+    }
+
+    /// Search for complete command sequence
+    pub fn search(self: *KeyBindNode, sequence: []const u64) ?*KeyBindNode {
+        var current = self;
+        for (sequence) |cmd| {
+            current = current.branches.get(cmd) orelse return null;
+        }
+        return current;
+    }
+
+    /// Find longest matching partial sequence
+    pub fn searchPartial(self: *KeyBindNode, input: []const u64) ?*KeyBindNode {
+        var current: ?*KeyBindNode = self;
+        var i: usize = 0;
+        
+        while (i < input.len) : (i += 1) {
+            current = current.?.branches.get(input[i]) orelse break;
+        }
+        return current;
+    }
+};
