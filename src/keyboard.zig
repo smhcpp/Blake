@@ -7,6 +7,7 @@ const utility = @import("utility.zig");
 const gpa = std.heap.c_allocator;
 const Toplevel = @import("toplevel.zig").Toplevel;
 const Server = @import("server.zig").Server;
+const api = @import("api.zig");
 const DLL = std.DoublyLinkedList(KeyEvent);
 
 pub const ModifierFlags = struct {
@@ -83,6 +84,7 @@ pub const Keyboard = struct {
         server.keyboards.append(keyboard);
     }
 
+    //modifier??
     pub fn handleModifiers(listener: *wl.Listener(*wlr.Keyboard), wlrkeyboard: *wlr.Keyboard) void {
         const keyboard: *Keyboard = @fieldParentPtr("modifiers", listener);
         keyboard.server.seat.setKeyboard(wlrkeyboard);
@@ -301,32 +303,14 @@ pub const Keyboard = struct {
     pub fn handleKeybind(keyboard: *Keyboard, key: xkb.Keysym) bool {
         switch (@intFromEnum(key)) {
             xkb.Keysym.Return => {
-                const cmd = "kitty";
-                var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", cmd }, keyboard.server.alloc);
-                var env_map = std.process.getEnvMap(keyboard.server.alloc) catch |err| {
-                    std.log.err("Failed to spawn: {}", .{err});
-                    return false;
-                };
-                defer env_map.deinit();
-                env_map.put("WAYLAND_DISPLAY", keyboard.server.socket) catch |err| {
-                    std.log.err("Failed to put the socket for the enviornment {}", .{err});
-                };
-                child.env_map = &env_map;
-
-                // Set the environment variables
-                _ = child.spawn() catch |err| {
-                    std.log.err("Failed to spawn: {}", .{err});
-                    return false;
-                };
-                return true;
+                const name: []const u8 = "kitty";
+                //setup default apps
+                return api.openApp(keyboard, name);
             },
 
             //giving cycling effect to super+tab.
             xkb.Keysym.Tab => {
-                const pre = keyboard.server.workspace_cur;
-                keyboard.server.workspace_cur += 1;
-                if (keyboard.server.workspace_cur >= keyboard.server.workspace_num) keyboard.server.workspace_cur -= keyboard.server.workspace_num;
-                keyboard.server.switchWS(pre);
+                api.CycleWindowForward(keyboard);
             },
 
             xkb.Keysym.Escape => {

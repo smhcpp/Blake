@@ -6,7 +6,7 @@ A vim-like compositor written in Zig based on zig-wlroots.
 
 ## Table of Contents
 - [Compile](#Compile)
-- [Planned Features](#planned-features)
+- [Planned Features](#ToDo)
 
 ## Compile
 
@@ -17,7 +17,7 @@ git clone https://github.com/smhcpp/Blake
 cd blake
 zig build
 ```
-## Planned Features
+## ToDo 
 
 - [ ] **Efficient Workspace Removal:** Remove workspaces in an efficient manner.
 - [ ] **Default Config Loading:** Load configs with a default version that works if there is an error when loading user defined config.

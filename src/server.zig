@@ -5,6 +5,7 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const gpa = std.heap.c_allocator;
 
+const datatypes=@import("datatypes.zig");
 const Toplevel = @import("toplevel.zig").Toplevel;
 const Workspace = @import("toplevel.zig").Workspace;
 const keyboard = @import("keyboard.zig");
@@ -29,11 +30,11 @@ pub const Server = struct {
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel) = .init(newXdgToplevel),
     new_xdg_popup: wl.Listener(*wlr.XdgPopup) = .init(newXdgPopup),
 
-    config: config.Config,
+    config: *config.Config,
     workspaces: std.ArrayList(Workspace) = undefined,
     workspace_num: usize = undefined,
     workspace_cur: usize = undefined,
-    mode: config.Mode,
+    mode: datatypes.Mode,
 
     seat: *wlr.Seat,
     new_input: wl.Listener(*wlr.InputDevice) = .init(newInput),
@@ -66,7 +67,7 @@ pub const Server = struct {
         const scene = try wlr.Scene.create();
         server.* = .{
             .loop = loop,
-            .mode = config.Mode.n,
+            .mode = datatypes.Mode.n,
             .config = undefined,
             .wlserver = wlserver,
             .backend = backend,
@@ -155,10 +156,10 @@ pub const Server = struct {
         const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
         const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
         const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
-        const mapsul: config.Keymap = config.Keymap{
+        const mapsul: datatypes.Keymap = datatypes.Keymap{
             .hold = symsupl,
         };
-        const mapshl: config.Keymap = config.Keymap{
+        const mapshl: datatypes.Keymap = datatypes.Keymap{
             .hold = symshl,
         };
         server.config.keymaps.put(symg, mapshl) catch {};
@@ -173,9 +174,9 @@ pub const Server = struct {
             server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
         } else server.workspace_cur = 0;
         // std.debug.print("workspace_cur: {}\n",.{server.workspace_cur});
-        if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
-            std.debug.print("Found node with {any} apps\n", .{node.appnames.items});
-        }
+        // if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
+        // std.debug.print("Found node with {any} apps\n", .{node.appnames.items});
+        // }
         // var it = server.config.configs.iterator();
         // while (it.next()) |entry| {
         // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
