@@ -1,8 +1,8 @@
 # Blake
 
-A vim-like compositor written in Zig based on zig-wlroots.
+Maybe a vim-like compositor written in Zig based on zig-wlroots. 
 
-**Note:** This project is currently non-functional and has many bugs.
+**Note:** This project is currently non-functional, has many bugs and sometimes even dramatic changes.
 
 ## Table of Contents
 - [Compile](#Compile)
