@@ -5,7 +5,7 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const gpa = std.heap.c_allocator;
 
-const datatypes=@import("datatypes.zig");
+const datatypes = @import("datatypes.zig");
 const Toplevel = @import("toplevel.zig").Toplevel;
 const Workspace = @import("toplevel.zig").Workspace;
 const keyboard = @import("keyboard.zig");
@@ -81,7 +81,7 @@ pub const Server = struct {
             .cursor = try wlr.Cursor.create(),
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
-        server.config = try config.loadConfig(gpa);
+        server.config = try config.Config.init(server);
         server.setUpConfig();
         // server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
@@ -165,14 +165,14 @@ pub const Server = struct {
         server.config.keymaps.put(symg, mapshl) catch {};
         server.config.keymaps.put(symf, mapsul) catch {};
 
-        if (server.config.configs.get("workspace_num")) |buf| {
-            server.workspace_num = std.fmt.parseInt(u8, buf, 10) catch 1;
-        } else server.workspace_num = 1;
+        // if (server.config.configs.get("workspace_num")) |buf| {
+            // server.workspace_num = std.fmt.parseInt(u8, buf, 10) catch 1;
+        // } else server.workspace_num = 1;
         // std.debug.print("workspace_num: {}\n",.{server.workspace_num});
 
-        if (server.config.configs.get("workspace_cur")) |buf| {
-            server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
-        } else server.workspace_cur = 0;
+        // if (server.config.configs.get("workspace_cur")) |buf| {
+            // server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
+        // } else server.workspace_cur = 0;
         // std.debug.print("workspace_cur: {}\n",.{server.workspace_cur});
         // if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
         // std.debug.print("Found node with {any} apps\n", .{node.appnames.items});

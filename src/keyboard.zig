@@ -8,6 +8,7 @@ const gpa = std.heap.c_allocator;
 const Toplevel = @import("toplevel.zig").Toplevel;
 const Server = @import("server.zig").Server;
 const api = @import("api.zig");
+const Value = @import("interpreter.zig").Value;
 const DLL = std.DoublyLinkedList(KeyEvent);
 
 pub const ModifierFlags = struct {
@@ -303,14 +304,20 @@ pub const Keyboard = struct {
     pub fn handleKeybind(keyboard: *Keyboard, key: xkb.Keysym) bool {
         switch (@intFromEnum(key)) {
             xkb.Keysym.Return => {
-                const name: []const u8 = "kitty";
+                // const name: []const u8 = "kitty";
                 //setup default apps
-                return api.openApp(keyboard, name);
+                _ = api.openApp(keyboard.server.config, &.{.{ .str = "kitty" }}) catch |err| {
+                    std.log.err("Failed to open app: {}", .{err});
+                    return false;
+                };
             },
 
             //giving cycling effect to super+tab.
             xkb.Keysym.Tab => {
-                api.CycleWindowForward(keyboard);
+                _ = api.cycleWindowForward(keyboard.server.config, &.{}) catch |err| {
+                    std.log.err("Failed to open app: {}", .{err});
+                    return false;
+                };
             },
 
             xkb.Keysym.Escape => {

@@ -1,14 +1,18 @@
+const Config = @import("config.zig").Config;
+const Value = @import("interpreter.zig").Value;
 const std = @import("std");
 const Keyboard = @import("keyboard.zig").Keyboard;
 
-pub fn openApp(keyboard: *Keyboard, appname: []const u8) bool {
-    var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", appname }, keyboard.server.alloc);
-    var env_map = std.process.getEnvMap(keyboard.server.alloc) catch |err| {
+pub fn openApp(o: *anyopaque, args: []const Value) anyerror!Value {
+    const config: *Config = @ptrCast(@alignCast(o));
+    const appname = args[0].str;
+    var child = std.process.Child.init(&[_][]const u8{ "/bin/sh", "-c", appname }, config.server.alloc);
+    var env_map = std.process.getEnvMap(config.server.alloc) catch |err| {
         std.log.err("Failed to spawn: {}", .{err});
-        return false;
+        return Value{ .bln = false };
     };
     defer env_map.deinit();
-    env_map.put("WAYLAND_DISPLAY", keyboard.server.socket) catch |err| {
+    env_map.put("WAYLAND_DISPLAY", config.server.socket) catch |err| {
         std.log.err("Failed to put the socket for the enviornment {}", .{err});
     };
     child.env_map = &env_map;
@@ -16,24 +20,48 @@ pub fn openApp(keyboard: *Keyboard, appname: []const u8) bool {
     // Set the environment variables
     _ = child.spawn() catch |err| {
         std.log.err("Failed to spawn: {}", .{err});
-        return false;
+        return Value{ .bln = false };
     };
-    return true;
+    return Value{ .bln = true };
 }
 
-pub fn CycleWindowForward(keyboard: *Keyboard) void {
-    const pre = keyboard.server.workspace_cur;
-    keyboard.server.workspace_cur += 1;
-    if (keyboard.server.workspace_cur >= keyboard.server.workspace_num) keyboard.server.workspace_cur -= keyboard.server.workspace_num;
-    keyboard.server.switchWS(pre);
+pub fn cycleWindowForward(o: *anyopaque, args: []const Value) anyerror!Value {
+    const config: *Config = @ptrCast(@alignCast(o));
+    _ = args;
+    const pre = config.workspace_cur;
+    config.workspace_cur += 1;
+    if (config.workspace_cur >= config.workspace_num) config.workspace_cur -= config.workspace_num;
+    config.server.switchWS(pre);
+    return Value{
+        .v = {},
+    };
 }
 
-pub fn CycleWindowBackward(keyboard: *Keyboard) void {
-    const pre = keyboard.server.workspace_cur;
-    if (keyboard.server.workspace_cur > 0) {
-        keyboard.server.workspace_cur -= 1;
+pub fn cycleWindowBackward(o: *anyopaque, args: []const Value) anyerror!Value {
+    const config: *Config = @ptrCast(@alignCast(o));
+    _ = args;
+    const pre = config.workspace_cur;
+    if (config.workspace_cur > 0) {
+        config.workspace_cur -= 1;
     } else {
-        keyboard.server.workspace_cur = keyboard.server.workspace_num - 1;
+        config.workspace_cur = config.workspace_num - 1;
     }
-    keyboard.server.switchWS(pre);
+    config.server.switchWS(pre);
+    return Value{
+        .v = {},
+    };
+}
+
+pub fn printValue(o: *anyopaque, args: []const Value) anyerror!Value {
+    _ = o;
+    switch (args[0]) {
+        .i32 => |i| std.debug.print("{} ", .{i}),
+        .f32 => |f| std.debug.print("{d:.2} ", .{f}),
+        .str => |s| std.debug.print("{s} ", .{s}),
+        .bln => |b| std.debug.print("{} ", .{b}),
+        .v => std.debug.print("(void) ", .{}),
+    }
+    return Value{
+        .v = {},
+    };
 }
