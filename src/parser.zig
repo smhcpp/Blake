@@ -1,22 +1,8 @@
 const lexer = @import("lexer.zig");
+const BlakeParserError = @import("lexer.zig").BlakeParserError;
 const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 const std = @import("std");
-
-pub const ParserError = error{
-    NoConfig,
-    UndefinedVariable,
-    TypeMismatch,
-    InvalidOperator,
-    UnknownFunction,
-    DivisionByZero,
-    AllocationFailed,
-    InvalidAssignment,
-    ArrayLengthMismatch,
-    UnexpectedToken,
-    ArrayTypeMismatch,
-    InvalidArrayElement,
-};
 
 pub const ArrayType = enum { i32, f32, bln, str };
 ///To do:
@@ -38,22 +24,24 @@ pub const ArrayType = enum { i32, f32, bln, str };
 ///file io: blk.io.open... (only if needed)
 ///terminal: blk.t.run() run some command.
 pub const AstNode = union(enum) {
-    i32: i32,
-    f32: f32,
-    str: []const u8,
-    bln: bool,
-    v: void,
-    vref: []const u8,
-    call: struct { name: []const u8, args: std.ArrayList(*AstNode) },
+    i32: struct { val: i32, ln: u16, pil: u16 },
+    f32: struct { val: f32, ln: u16, pil: u16 },
+    str: struct { val: []const u8, ln: u16, pil: u16 },
+    bln: struct { val: bool, ln: u16, pil: u16 },
+    v: struct { val: void, ln: u16, pil: u16 },
     arr: struct {
-        elements: std.ArrayList(*AstNode),
+        ln: u16,
+        pil: u16,
+        el: std.ArrayList(*AstNode),
         type: ArrayType,
     },
+    vref: struct { name: []const u8, ln: u16, pil: u16 },
+    call: struct { name: []const u8, ln: u16, pil: u16, args: std.ArrayList(*AstNode) },
     // fun: struct { params: std.ArrayList([]const u8), body: std.ArrayList(AstNode) },
     // If: struct { cond: *AstNode, body: std.ArrayList(AstNode), el: ?std.ArrayList(AstNode) },
     // While: struct { cond: *AstNode, body: std.ArrayList(AstNode) },
-    assign: struct { name: []const u8, value: *AstNode },
-    bin: struct { op: lexer.TokenType, lhs: *AstNode, rhs: *AstNode },
+    assign: struct { name: []const u8, ln: u16, pil: u16, value: *AstNode },
+    bin: struct { op: lexer.TokenType, ln: u16, pil: u16, lhs: *AstNode, rhs: *AstNode },
 };
 
 pub const Parser = struct {
@@ -93,7 +81,7 @@ pub const Parser = struct {
     fn expect(parser: *Parser, expected: lexer.TokenType) !void {
         const token = parser.scanner.tokens.items[parser.tn];
         if (token.type != expected) {
-            parser.scanner.panicAt(
+            try parser.scanner.panicAt(
                 try std.fmt.allocPrint(parser.scanner.allocator, "Expected {s}, found {s}", .{ @tagName(expected), @tagName(token.type) }),
                 token.ln,
                 token.pil,
@@ -144,6 +132,8 @@ pub const Parser = struct {
             try parser.expect(.Eol);
             node.* = AstNode{ .assign = .{
                 .value = value,
+                .ln = token.ln,
+                .pil = token.pil,
                 .name = token.lexeme,
             } };
             return node;
@@ -161,12 +151,12 @@ pub const Parser = struct {
             try parser.expect(.Eol); // Expect end of line after call
 
             const node = try parser.scanner.allocator.create(AstNode);
-            node.* = .{ .call = .{ .name = token.lexeme, .args = args } };
+            node.* = .{ .call = .{ .name = token.lexeme, .args = args, .ln = token.ln, .pil = token.pil } };
             return node;
         }
 
         const ref_node = try parser.scanner.allocator.create(AstNode);
-        ref_node.* = .{ .vref = token.lexeme };
+        ref_node.* = .{ .vref = .{ .name = token.lexeme, .ln = token.ln, .pil = token.pil } };
         return ref_node;
     }
 
@@ -175,7 +165,7 @@ pub const Parser = struct {
         const token = parser.scanner.tokens.items[parser.tn];
         const value = try std.fmt.parseInt(i32, token.lexeme, 10);
         parser.advance();
-        node.* = AstNode{ .i32 = value };
+        node.* = AstNode{ .i32 = .{ .val = value, .ln = token.ln, .pil = token.pil } };
         return node;
     }
 
@@ -184,7 +174,7 @@ pub const Parser = struct {
         const token = parser.scanner.tokens.items[parser.tn];
         const value = try std.fmt.parseFloat(f32, token.lexeme);
         parser.advance();
-        node.* = AstNode{ .f32 = value };
+        node.* = AstNode{ .f32 = .{ .val = value, .ln = token.ln, .pil = token.pil } };
         return node;
     }
 
@@ -192,7 +182,7 @@ pub const Parser = struct {
         const node = try parser.scanner.allocator.create(AstNode);
         const token = parser.scanner.tokens.items[parser.tn];
         parser.advance();
-        node.* = AstNode{ .bln = if (token.type == .T) true else false };
+        node.* = AstNode{ .bln = .{ .ln = token.ln, .pil = token.pil, .val = if (token.type == .T) true else false } };
         return node;
     }
 
@@ -200,7 +190,7 @@ pub const Parser = struct {
         const node = try parser.scanner.allocator.create(AstNode);
         const token = parser.scanner.tokens.items[parser.tn];
         parser.advance();
-        node.* = AstNode{ .str = token.lexeme[1 .. token.lexeme.len - 1] };
+        node.* = AstNode{ .str = .{ .ln = token.ln, .pil = token.pil, .val = token.lexeme[1 .. token.lexeme.len - 1] } };
         return node;
     }
 
@@ -211,12 +201,12 @@ pub const Parser = struct {
     fn parseAddSub(parser: *Parser) !*AstNode {
         var left = try parser.parseMulDiv();
         while (true) {
-            const op = parser.scanner.tokens.items[parser.tn].type;
-            if (op == .Plus or op == .Minus) {
+            const op = parser.scanner.tokens.items[parser.tn];
+            if (op.type == .Plus or op.type == .Minus) {
                 parser.advance();
                 const right = try parser.parseMulDiv();
                 const node = try parser.scanner.allocator.create(AstNode);
-                node.* = .{ .bin = .{ .op = op, .lhs = left, .rhs = right } };
+                node.* = .{ .bin = .{ .ln = op.ln, .pil = op.pil, .op = op.type, .lhs = left, .rhs = right } };
                 left = node;
             } else {
                 break;
@@ -228,12 +218,12 @@ pub const Parser = struct {
     fn parseMulDiv(parser: *Parser) !*AstNode {
         var left = try parser.parseExponent();
         while (true) {
-            const op = parser.scanner.tokens.items[parser.tn].type;
-            if (op == .Star or op == .Slash or op == .Percent) {
+            const op = parser.scanner.tokens.items[parser.tn];
+            if (op.type == .Star or op.type == .Slash or op.type == .Percent) {
                 parser.advance();
                 const right = try parser.parseExponent();
                 const node = try parser.scanner.allocator.create(AstNode);
-                node.* = .{ .bin = .{ .op = op, .lhs = left, .rhs = right } };
+                node.* = .{ .bin = .{ .ln = op.ln, .pil = op.pil, .op = op.type, .lhs = left, .rhs = right } };
                 left = node;
             } else {
                 break;
@@ -244,16 +234,18 @@ pub const Parser = struct {
 
     fn parseExponent(parser: *Parser) !*AstNode {
         var left = try parser.parseTerminal();
+        const tok = parser.scanner.tokens.items[parser.tn];
         if (parser.match(.Caret)) {
             const right = try parser.parseExponent();
             const node = try parser.scanner.allocator.create(AstNode);
-            node.* = .{ .bin = .{ .op = .Caret, .lhs = left, .rhs = right } };
+            node.* = .{ .bin = .{ .ln = tok.ln, .pil = tok.pil, .op = .Caret, .lhs = left, .rhs = right } };
             left = node;
         }
         return left;
     }
 
     fn parseArray(parser: *Parser) !*AstNode {
+        const tok = parser.scanner.tokens.items[parser.tn];
         try parser.expect(.BraO);
         var elements = std.ArrayList(*AstNode).init(parser.scanner.allocator);
 
@@ -263,7 +255,9 @@ pub const Parser = struct {
             const node = try parser.scanner.allocator.create(AstNode);
             node.* = .{
                 .arr = .{
-                    .elements = elements,
+                    .ln = tok.ln,
+                    .pil = tok.pil,
+                    .el = elements,
                     .type = .i32, // Default type for empty arrays
                 },
             };
@@ -285,7 +279,9 @@ pub const Parser = struct {
             const elem_type = try getElementType(elem.*);
 
             if (elem_type != array_type) {
-                return ParserError.ArrayTypeMismatch;
+                const m = parser.scanner.tokens.items[parser.tn];
+                try parser.scanner.panicAt("All array elements must be of the same type", m.ln, m.pil);
+                return BlakeParserError.Msg;
             }
 
             _ = parser.match(.Eol);
@@ -296,15 +292,17 @@ pub const Parser = struct {
 
         const node = try parser.scanner.allocator.create(AstNode);
         node.* = .{ .arr = .{
-            .elements = elements,
+            .el = elements,
+            .ln = tok.ln,
+            .pil = tok.pil,
             .type = array_type,
         } };
         return node;
     }
 
     fn parseTerminal(parser: *Parser) anyerror!*AstNode {
-        const typo = parser.scanner.tokens.items[parser.tn].type;
-        switch (typo) {
+        const tok = parser.scanner.tokens.items[parser.tn];
+        switch (tok.type) {
             .I32 => return try parser.parseI32(),
             .F32 => return try parser.parseF32(),
             .Quo, .DQuo => return try parser.parseStr(),
@@ -319,8 +317,8 @@ pub const Parser = struct {
             },
             // .Eol => {},
             else => {
-                print("Token Type: {}\n", .{typo});
-                return ParserError.UnexpectedToken;
+                try parser.scanner.panicAt("Unrecognized value type", tok.ln, tok.pil);
+                return BlakeParserError.Msg;
             },
         }
     }
@@ -333,6 +331,8 @@ pub fn getElementType(node: AstNode) !ArrayType {
         .str => .str,
         .bln => .bln,
         .arr => |ar| ar.type,
-        else => return ParserError.InvalidArrayElement,
+        else => {
+            return BlakeParserError.Msg;
+        },
     };
 }

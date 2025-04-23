@@ -3,6 +3,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 
+pub const BlakeParserError = error{DivisionByZero, IndexOutOfBounds,Msg, ArrayTypeMissMatch, ArrayLengthMismatch, TypeMismatch ,InvalidOperator};
+
 pub const TokenType = enum {
     // Space, // ' '
     Eol, // '\n'
@@ -131,27 +133,33 @@ pub const Scanner = struct {
     tokens: std.ArrayList(*Token),
     allocator: Allocator,
 
-    fn panic(scanner: *Scanner, msg: []const u8) void {
-        // for now we exit but in blake it should only return error
-        scanner.panicAt(msg, scanner.ln, scanner.pil);
+    /// error message
+    errorMsg: []const u8 = "",
+    
+    fn panic(scanner: *Scanner, msg: []const u8) !void {
+        try scanner.panicAt(msg, scanner.ln, scanner.pil);
     }
 
-    pub fn panicAt(scanner: *Scanner, msg: []const u8, linenumber: u16, pil: u16) void {
+    pub fn panicAt(scanner: *Scanner, msg: []const u8, linenumber: u16, pil: u16) !void {
         const line = scanner.lines.items[linenumber];
+        var msgbuilder = std.ArrayList(u8).init(scanner.allocator);
         const tabcount = std.mem.count(u8, line, "\t");
-        print("Error: {s},\n{:6} | {s}\n", .{ msg, linenumber, line });
+        const p1 = std.fmt.allocPrint(scanner.allocator, "Error: {s},\n{:6} | {s}\n", .{ msg, linenumber, line }) catch "Error Parsing!\n";
         var i: u16 = 0;
+        msgbuilder.appendSlice(p1) catch {};
         while (i < tabcount) : (i += 1) {
-            print("\t", .{});
+            msgbuilder.append('\t') catch {};
         }
         // 3 for ` | `, 6 for :6
-        print("         ", .{});
+        msgbuilder.appendSlice("         ") catch {};
         i = 0;
         while (i < pil - tabcount) : (i += 1) {
-            print(" ", .{});
+            msgbuilder.append(' ') catch {};
         }
-        print("^\n", .{});
-        std.process.exit(0);
+        msgbuilder.appendSlice("^\n") catch {};
+        const c = msgbuilder.toOwnedSlice() catch "Error in Parser.\n";
+        scanner.errorMsg = c;
+        return BlakeParserError.Msg;
     }
 
     pub fn init(allocator: Allocator, buffer: []const u8) !*Scanner {
@@ -253,7 +261,7 @@ pub const Scanner = struct {
                         try scanner.addTokenByType(TokenType.Minus, 1);
                     },
                     '\\' => {
-                        scanner.panic("\\ can only be used inside string literals");
+                        try scanner.panic("\\ can only be used inside string literals");
                     },
                     ',' => {
                         try scanner.addTokenByType(TokenType.Comma, 1);
@@ -273,7 +281,7 @@ pub const Scanner = struct {
                         // try scanner.addTokenByType(TokenType.Space, 1);
                     },
                     else => {
-                        scanner.panic("Use of uncategorized character");
+                        try scanner.panic("Use of uncategorized character");
                     },
                 }
             }
@@ -295,7 +303,7 @@ pub const Scanner = struct {
                 '0'...'9' => {},
                 '.' => {
                     if (isfloat) {
-                        scanner.panicAt("Multiple `.` for a flating number", scanner.ln, ipos);
+                        try scanner.panicAt("Multiple `.` for a flating number", scanner.ln, ipos);
                     }
                     isfloat = true;
                 },
@@ -339,7 +347,7 @@ pub const Scanner = struct {
             if (lexeme.len < 20) {
                 try scanner.addTokenAt(TokenType.Id, scanner.ln, ipos, scanner.pil - ipos, lexeme);
             } else {
-                scanner.panicAt("Identifier has a problem (make sure to put at most 20 alphanumerical characters)", scanner.ln, ipos);
+                try scanner.panicAt("Identifier has a problem (make sure to put at most 20 alphanumerical characters)", scanner.ln, ipos);
             }
         }
         scanner.pil -= 1;
@@ -377,7 +385,7 @@ pub const Scanner = struct {
                 try scanner.addTokenByType(basetype, 1);
             }
         } else {
-            scanner.panic("The operator at the end of the line has no follow up.");
+            try scanner.panic("The operator at the end of the line has no follow up.");
         }
     }
 
@@ -416,7 +424,7 @@ pub const Scanner = struct {
         }
         if (scanner.pil != 0) scanner.pil -= 1;
         if (instring) {
-            scanner.panicAt("The string has no end.", i, j);
+            try scanner.panicAt("The string has no end.", i, j);
         }
     }
 
@@ -435,7 +443,7 @@ pub const Scanner = struct {
                 try scanner.addTokenByType(ttype, 1);
             }
         } else {
-            scanner.panic("`/` at the end of the line has now follow up.");
+            try scanner.panic("`/` at the end of the line has now follow up.");
         }
         while (incomment) : (scanner.pil += 1) {
             if (scanner.pil + 1 >= scanner.lines.items[scanner.ln].len) {
@@ -458,7 +466,7 @@ pub const Scanner = struct {
         }
         if (scanner.pil != 0) scanner.pil -= 1;
         if (incomment) {
-            scanner.panicAt("The comment starting by `/*` has no end.", i, j);
+            try scanner.panicAt("The comment starting by `/*` has no end.", i, j);
         }
     }
 
