@@ -1,8 +1,10 @@
+const std = @import("std");
+const dt = @import("datatypes.zig");
+const print = std.debug.print;
 const Config = @import("config.zig").Config;
 const Value = @import("interpreter.zig").Value;
 const ValueType = @import("interpreter.zig").ValueType;
 const inter = @import("interpreter.zig");
-const std = @import("std");
 const Keyboard = @import("keyboard.zig").Keyboard;
 
 pub fn openApp(o: *anyopaque, args: []const Value) anyerror!Value {
@@ -71,6 +73,26 @@ pub fn printValue(o: *anyopaque, args: []const Value) anyerror!Value {
     };
 }
 
-// pub fn loadLayout(o: *anyopaque, args: []const Value) anyerror!Value {
+pub fn loadLayout(o: *anyopaque, args: []const Value) anyerror!Value {
+    const config: *Config = @ptrCast(@alignCast(o));
 
-// }
+    const name = args[0];
+    const arr1 = args[1];
+    var boxs = std.ArrayList([4]f32).init(config.server.alloc);
+    for (arr1.arr.items) |arr2| {
+        for (arr2.arr.items) |arr3| {
+            var a: [4]f32 = .{0} ** 4;
+            for (arr3.arr.items, 0..) |v, i| {
+                a[i] = v.f32;
+            }
+            try boxs.append(a);
+        }
+    }
+    const layout = dt.Layout{
+        .name = name.str,
+        .size = @intCast(arr1.arr.items.len),
+        .boxs = boxs,
+    };
+    try config.layouts.append(layout);
+    return Value{ .v = {} };
+}

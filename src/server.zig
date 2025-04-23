@@ -181,7 +181,7 @@ pub const Server = struct {
         // while (it.next()) |entry| {
         // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
         // }
-        std.process.exit(0);
+        // std.process.exit(0);
     }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {

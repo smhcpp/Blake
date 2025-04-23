@@ -55,7 +55,8 @@ pub const Config = struct {
         try interpreter.registerMethod(.{ .ptr = &Api.cycleWindowBackward, .ctx = config }, "cycf");
         try interpreter.registerMethod(.{ .ptr = &Api.cycleWindowForward, .ctx = config }, "cycb");
         try interpreter.registerMethod(.{ .ptr = &Api.printValue, .ctx = config }, "print");
-
+        try interpreter.registerMethod(.{ .ptr = &Api.loadLayout, .ctx = config }, "layout");
+        
         try interpreter.evaluate();
     }
 };

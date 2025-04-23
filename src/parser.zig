@@ -269,14 +269,16 @@ pub const Parser = struct {
             };
             return node;
         }
-
         // Parse first element to determine type
+        _ = parser.match(.Eol);
         const first_element = try parser.parseExpr();
         try elements.append(first_element);
         const array_type = try getElementType(first_element.*);
+        _ = parser.match(.Eol);
 
         // Parse remaining elements
         while (parser.match(.Comma)) {
+            _ = parser.match(.Eol);
             if (parser.scanner.tokens.items[parser.tn].type == .BraC) break;
 
             const elem = try parser.parseExpr();
@@ -286,6 +288,7 @@ pub const Parser = struct {
                 return ParserError.ArrayTypeMismatch;
             }
 
+            _ = parser.match(.Eol);
             try elements.append(elem);
         }
 
@@ -314,6 +317,7 @@ pub const Parser = struct {
                 try parser.expect(.ParC);
                 return expr;
             },
+            // .Eol => {},
             else => {
                 print("Token Type: {}\n", .{typo});
                 return ParserError.UnexpectedToken;

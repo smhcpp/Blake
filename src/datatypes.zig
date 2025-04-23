@@ -15,8 +15,8 @@ pub const ModKey = struct {
     sym: u32,
 };
 
-pub const ListConfigKeywords: [6][]const u8 = .{ "loadLayout", "bind", "config", "pass", "keymap", "open" };
-pub const ListConfigBindKeywords: []const u8 = &[_]u8{ 3, 5 };
+// pub const ListConfigKeywords: [6][]const u8 = .{ "loadLayout", "bind", "config", "pass", "keymap", "open" };
+// pub const ListConfigBindKeywords: []const u8 = &[_]u8{ 3, 5 };
 
 /// Space and Tab should be written as ' ' and '\t' respectively, so this list
 /// does not containt those keysyms which is good for writting.
