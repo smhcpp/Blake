@@ -32,9 +32,9 @@ pub fn openApp(o: *anyopaque, args: []const Value) anyerror!Value {
 pub fn cycleWindowForward(o: *anyopaque, args: []const Value) anyerror!Value {
     const config: *Config = @ptrCast(@alignCast(o));
     _ = args;
-    const pre = config.workspace_cur;
-    config.workspace_cur += 1;
-    if (config.workspace_cur >= config.workspace_num) config.workspace_cur -= config.workspace_num;
+    const pre = config.server.workspace_cur;
+    config.server.workspace_cur += 1;
+    if (config.server.workspace_cur >= config.server.workspace_num) config.server.workspace_cur -= config.server.workspace_num;
     config.server.switchWS(pre);
     return Value{
         .v = {},
@@ -44,11 +44,11 @@ pub fn cycleWindowForward(o: *anyopaque, args: []const Value) anyerror!Value {
 pub fn cycleWindowBackward(o: *anyopaque, args: []const Value) anyerror!Value {
     const config: *Config = @ptrCast(@alignCast(o));
     _ = args;
-    const pre = config.workspace_cur;
-    if (config.workspace_cur > 0) {
-        config.workspace_cur -= 1;
+    const pre = config.server.workspace_cur;
+    if (config.server.workspace_cur > 0) {
+        config.server.workspace_cur -= 1;
     } else {
-        config.workspace_cur = config.workspace_num - 1;
+        config.server.workspace_cur = config.server.workspace_num - 1;
     }
     config.server.switchWS(pre);
     return Value{
@@ -60,7 +60,7 @@ pub fn printValue(o: *anyopaque, args: []const Value) anyerror!Value {
     _ = o;
     switch (args[0]) {
         .i32 => |i| std.debug.print("{} ", .{i}),
-        .f32 => |f| std.debug.print("{d:.2} ", .{f}),
+        .f32 => |f| std.debug.print("{d:.7} ", .{f}),
         .str => |s| std.debug.print("{s} ", .{s}),
         .bln => |b| std.debug.print("{} ", .{b}),
         .v => std.debug.print("(void) ", .{}),
@@ -91,7 +91,7 @@ pub fn loadLayout(o: *anyopaque, args: []const Value) anyerror!Value {
     const layout = dt.Layout{
         .name = name.str,
         .size = @intCast(arr1.arr.items.len),
-        .boxs = boxs,
+        .boxs = try boxs.toOwnedSlice(),
     };
     try config.layouts.append(layout);
     return Value{ .v = {} };

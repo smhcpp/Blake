@@ -11,8 +11,6 @@ const Api = @import("api.zig");
 
 pub const Config = struct {
     server: *Server,
-    workspace_num: u8 = 1,
-    workspace_cur: u8 = 0,
 
     layouts: std.ArrayList(datatypes.Layout),
     keymaps: std.AutoHashMap(xkb.Keysym, datatypes.Keymap),
@@ -33,8 +31,27 @@ pub const Config = struct {
             .bindsc = std.StringHashMap(datatypes.BindActions).init(server.alloc),
             .bindsn = std.StringHashMap(datatypes.BindActions).init(server.alloc),
         };
+        try config.setDefaults();
         try config.loadConfig();
         return config;
+    }
+
+    fn setDefaults(config: *Config) !void {
+        config.server.workspace_cur = 0;
+        config.server.workspace_num = 12;
+        
+        const symg: xkb.Keysym = @enumFromInt(xkb.Keysym.g);
+        const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
+        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
+        const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
+        const mapsul: datatypes.Keymap = datatypes.Keymap{
+            .hold = symsupl,
+        };
+        const mapshl: datatypes.Keymap = datatypes.Keymap{
+            .hold = symshl,
+        };
+        config.keymaps.put(symg, mapshl) catch {};
+        config.keymaps.put(symf, mapsul) catch {};
     }
 
     fn loadConfig(config: *Config) !void {
@@ -56,8 +73,9 @@ pub const Config = struct {
         try interpreter.registerMethod(.{ .ptr = &Api.cycleWindowForward, .ctx = config }, "cycb");
         try interpreter.registerMethod(.{ .ptr = &Api.printValue, .ctx = config }, "print");
         try interpreter.registerMethod(.{ .ptr = &Api.loadLayout, .ctx = config }, "layout");
-        
+
         try interpreter.evaluate();
+        print("here config finished loading!\n", .{});
     }
 };
 

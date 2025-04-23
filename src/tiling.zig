@@ -9,12 +9,13 @@ pub fn refreshLayout(server: *Server) void {
     const num = server.workspaces.items[server.workspace_cur].toplevels.items.len;
     if (num == 0) return;
     const origin = sumSize(usize, num - 1);
-    const boxs = server.config.layouts.items[server.workspaces.items[server.workspace_cur].layout_cur].boxs.items;
+    const boxs = server.config.layouts.items[server.workspaces.items[server.workspace_cur].layout_cur].boxs;
     var screen: wlr.Box = undefined;
     server.output_layout.getBox(null, &screen);
     const width: f64 = @floatFromInt(screen.width);
     const height: f64 = @floatFromInt(screen.height);
     var i: usize = 0;
+    std.debug.print("boxs: {any}\n",.{boxs});
     for (server.workspaces.items[server.workspace_cur].toplevels.items) |toplvl| {
         const x_f: f64 = width * boxs[origin + i][0];
         const y_f: f64 = height * boxs[origin + i][1];

@@ -82,7 +82,7 @@ pub const Server = struct {
             .cursor_mgr = try wlr.XcursorManager.create(null, 24),
         };
         server.config = try config.Config.init(server);
-        server.setUpConfig();
+        // server.setUpConfig();
         // server.keybuffer = std.ArrayList(keyboard.KeyEvent).init(server.alloc);
         server.workspaces = std.ArrayList(Workspace).init(server.alloc);
         var wi: usize = 0;
@@ -151,38 +151,10 @@ pub const Server = struct {
         server.wlserver.destroy();
     }
 
-    pub fn setUpConfig(server: *Server) void {
-        const symg: xkb.Keysym = @enumFromInt(xkb.Keysym.g);
-        const symf: xkb.Keysym = @enumFromInt(xkb.Keysym.f);
-        const symshl: xkb.Keysym = @enumFromInt(xkb.Keysym.Shift_L);
-        const symsupl: xkb.Keysym = @enumFromInt(xkb.Keysym.Super_L);
-        const mapsul: datatypes.Keymap = datatypes.Keymap{
-            .hold = symsupl,
-        };
-        const mapshl: datatypes.Keymap = datatypes.Keymap{
-            .hold = symshl,
-        };
-        server.config.keymaps.put(symg, mapshl) catch {};
-        server.config.keymaps.put(symf, mapsul) catch {};
-
-        // if (server.config.configs.get("workspace_num")) |buf| {
-            // server.workspace_num = std.fmt.parseInt(u8, buf, 10) catch 1;
-        // } else server.workspace_num = 1;
-        // std.debug.print("workspace_num: {}\n",.{server.workspace_num});
-
-        // if (server.config.configs.get("workspace_cur")) |buf| {
-            // server.workspace_cur = std.fmt.parseInt(u8, buf, 10) catch 0;
-        // } else server.workspace_cur = 0;
-        // std.debug.print("workspace_cur: {}\n",.{server.workspace_cur});
-        // if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
-        // std.debug.print("Found node with {any} apps\n", .{node.appnames.items});
-        // }
-        // var it = server.config.configs.iterator();
-        // while (it.next()) |entry| {
-        // std.debug.print("config: {s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-        // }
-        // std.process.exit(0);
-    }
+    // std.debug.print("workspace_cur: {}\n",.{server.workspace_cur});
+    // if (server.config.binds.search(&[_]u64{ 0x1, 0x2, 0x3 })) |node| {
+    // std.debug.print("Found node with {any} apps\n", .{node.appnames.items});
+    // }
 
     pub fn newOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const server: *Server = @fieldParentPtr("new_output", listener);

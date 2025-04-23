@@ -104,7 +104,7 @@ pub fn getMode(char: u8) !Mode {
 pub const Layout = struct {
     name: []const u8,
     size: u8,
-    boxs: std.ArrayList([4]f32),
+    boxs: []const [4]f32,
 };
 
 pub const BindActions = struct {
