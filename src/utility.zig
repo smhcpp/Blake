@@ -131,3 +131,124 @@ pub fn OrderedAutoHashMap(comptime K: type, comptime V: type) type {
     };
 }
 
+///splits strings with some character as delimiter and skips the delimiters in
+///blocks that start with chars in skip (like skip="[{") taking comments into account. It skips any
+///newline character: \r or \n
+fn split(allocator: std.mem.Allocator, skip: []const u8, s: []const u8, char: u8) std.ArrayList([]const u8) {
+    var cmds = std.ArrayList([]const u8).init(allocator);
+    var bralevel: u8 = 0;
+    var paralevel: u8 = 0;
+    var curlylevel: u8 = 0;
+    var gtlevel: u8 = 0;
+    var instring: bool = false;
+    var bsflag: bool = false;
+    var cur: std.ArrayList(u8) = std.ArrayList(u8).init(allocator);
+    var incomment: bool = false;
+
+    for (s) |c| {
+        if (incomment) {
+            if (c == '\n' or c == '\r') {
+                incomment = false;
+                continue;
+            }
+            continue;
+        }
+
+        if (c == '#' and !instring) {
+            //only if we are in string, sharp does not comment!
+            incomment = true;
+            continue;
+        }
+
+        if (c == '\\') {
+            bsflag = !bsflag;
+        }
+        defer {
+            if (c != '\\') bsflag = false;
+        }
+        // you have to remove extra backslash from each command?
+        // no we only split here the parser does that!
+
+        for (skip) |sk| {
+            switch (sk) {
+                '(' => {
+                    if (!bsflag) {
+                        if (c == sk) {
+                            paralevel +|= 1;
+                        } else if (c == ')') {
+                            paralevel -|= 1;
+                        }
+                    }
+                },
+                '"' => {
+                    if (!bsflag) {
+                        if (c == sk) {
+                            instring = !instring;
+                        }
+                    }
+                },
+                '{' => {
+                    if (!bsflag) {
+                        if (c == sk) {
+                            curlylevel +|= 1;
+                        } else if (c == '}') {
+                            curlylevel -|= 1;
+                        }
+                    }
+                },
+                '[' => {
+                    if (!bsflag) {
+                        if (c == sk) {
+                            bralevel +|= 1;
+                        } else if (c == ']') {
+                            bralevel -|= 1;
+                        }
+                    }
+                },
+                '<' => {
+                    if (!bsflag) {
+                        if (c == sk) {
+                            gtlevel +|= 1;
+                        } else if (c == '>') {
+                            gtlevel -|= 1;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+        if (bralevel == 0 and paralevel == 0 and gtlevel == 0 and curlylevel == 0 and !instring) {
+            if (c == char) {
+                const cmd = cur.toOwnedSlice() catch "";
+                if (cmd.len > 0) {
+                    // std.debug.print("cmd: {s}\n", .{cmd});
+                    cmds.append(cmd) catch |e| {
+                        std.debug.print("error: {}", .{e});
+                    };
+                }
+                continue;
+            } else if (char != ' ' and c == ' ') {} else if (char != '\t' and c == '\t') {
+                //
+            } else if (char != '\r' and c == '\r') {} else if (char != '\n' and c == '\n') {
+                // remove the need to use trim out of brackets or/and ...
+            } else {
+                cur.append(c) catch |e| {
+                    std.debug.print("error: {}", .{e});
+                };
+            }
+        } else {
+            cur.append(c) catch |e| {
+                std.debug.print("error: {}", .{e});
+            };
+        }
+    }
+    // catch the last statement for the case char!=';'
+    const cmd = cur.toOwnedSlice() catch "";
+    if (cmd.len > 0) {
+        // std.debug.print("cmd: {s}\n", .{cmd});
+        cmds.append(cmd) catch |e| {
+            std.debug.print("error: {}", .{e});
+        };
+    }
+    return cmds;
+}

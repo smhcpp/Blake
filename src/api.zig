@@ -1,5 +1,7 @@
 const Config = @import("config.zig").Config;
 const Value = @import("interpreter.zig").Value;
+const ValueType = @import("interpreter.zig").ValueType;
+const inter = @import("interpreter.zig");
 const std = @import("std");
 const Keyboard = @import("keyboard.zig").Keyboard;
 
@@ -60,8 +62,15 @@ pub fn printValue(o: *anyopaque, args: []const Value) anyerror!Value {
         .str => |s| std.debug.print("{s} ", .{s}),
         .bln => |b| std.debug.print("{} ", .{b}),
         .v => std.debug.print("(void) ", .{}),
+        .arr => |a| {
+            std.debug.print("{any}", .{a.items});
+        },
     }
     return Value{
         .v = {},
     };
 }
+
+// pub fn loadLayout(o: *anyopaque, args: []const Value) anyerror!Value {
+
+// }

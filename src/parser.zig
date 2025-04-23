@@ -12,6 +12,7 @@ pub const ParserError = error{
     DivisionByZero,
     AllocationFailed,
     InvalidAssignment,
+    ArrayLengthMismatch,
     UnexpectedToken,
     ArrayTypeMismatch,
     InvalidArrayElement,
@@ -321,7 +322,7 @@ pub const Parser = struct {
     }
 };
 
-fn getElementType(node: AstNode) !ArrayType {
+pub fn getElementType(node: AstNode) !ArrayType {
     return switch (node) {
         .i32 => .i32,
         .f32 => .f32,

@@ -8,13 +8,25 @@ pub const MethodWrapper = struct {
     ctx: *anyopaque,
 };
 
+pub const ValueType = enum { i32, f32, str, bln, v, arr };
+
 /// Value type for evaluation results
-pub const Value = union(enum) {
+pub const Value = union(ValueType) {
     i32: i32,
     f32: f32,
     str: []const u8,
     bln: bool,
     v: void,
+    arr: struct {
+        items: []Value,
+        allocator: std.mem.Allocator,
+        pub fn deinit(self: *@This()) void {
+            for (self.items) |item| {
+                if (item == .arr) item.arr.deinit();
+            }
+            self.allocator.free(self.items);
+        }
+    },
 };
 
 /// Errors that can occur during evaluation
@@ -43,26 +55,61 @@ pub const Interpreter = struct {
 
     /// Free any resources held by the Interpreter
     pub fn deinit(self: *Interpreter) void {
+        // Clean up arrays in environment
+        // var env_it = self.env.iterator();
+        // while (env_it.next()) |entry| {
+        // if (entry.value_ptr.* == .arr) {
+        // entry.value_ptr.arr.deinit();
+        // }
+        // }
+
+        // Clean up parsed AST arrays
+        for (self.parser.statements.items) |stmt| {
+            recursiveDeinit(stmt, self.allocator);
+        }
         self.env.deinit();
         self.parser.deinit();
         self.methods.deinit();
     }
 
+    fn recursiveDeinit(node: *parserf.AstNode, allocator: std.mem.Allocator) void {
+        switch (node.*) {
+            .arr => |arr| {
+                for (arr.elements.items) |elem| {
+                    recursiveDeinit(elem, allocator);
+                }
+                arr.elements.deinit();
+            },
+            .call => |call| {
+                for (call.args.items) |arg| {
+                    recursiveDeinit(arg, allocator);
+                }
+                call.args.deinit();
+            },
+            .bin => |bin| {
+                recursiveDeinit(bin.lhs, allocator);
+                recursiveDeinit(bin.rhs, allocator);
+            },
+            else => {},
+        }
+        allocator.destroy(node);
+    }
     pub fn registerMethod(self: *Interpreter, method: MethodWrapper, trigger: []const u8) !void {
         try self.methods.put(trigger, method);
     }
 
     pub fn evaluate(self: *Interpreter) !void {
         while (self.parser.statements.items.len > self.sn) : (self.sn += 1) {
-            const idx = self.sn;
-            const result = try self.eval(self.parser.statements.items[self.sn]);
-            switch (result) {
-                .i32 => |i| std.debug.print("Result[{}] = {} (int)\n", .{ idx, i }),
-                .f32 => |f| std.debug.print("Result[{}] = {} (float)\n", .{ idx, f }),
-                .str => |s| std.debug.print("Result[{}] = \"{s}\" (string)\n", .{ idx, s }),
-                .bln => |b| std.debug.print("Result[{}] = {} (bool)\n", .{ idx, b }),
-                .v => |_| std.debug.print("Result[{}] = void\n", .{idx}),
-            }
+            // const idx = self.sn;
+            _ = try self.eval(self.parser.statements.items[self.sn]);
+            // switch (result) {
+            // .i32 => |i| std.debug.print("Result[{}] = {} (int)\n", .{ idx, i }),
+            // .f32 => |f| std.debug.print("Result[{}] = {} (float)\n", .{ idx, f }),
+            // .str => |s| std.debug.print("Result[{}] = \"{s}\" (string)\n", .{ idx, s }),
+            // .bln => |b| std.debug.print("Result[{}] = {} (bool)\n", .{ idx, b }),
+            // .v => |_| std.debug.print("Result[{}] = void\n", .{idx}),
+            // .arr => |a| std.debug.print("Result[{}] = {any}\n", .{ idx, a.items }),
+            // }
         }
         self.sn = 0;
     }
@@ -80,6 +127,16 @@ pub const Interpreter = struct {
                 try self.env.put(asgn.name, rhs_val);
                 break :blk rhs_val;
             },
+            .arr => |arr| blk: {
+                const items = try self.allocator.alloc(Value, arr.elements.items.len);
+                for (arr.elements.items, 0..) |elem, i| {
+                    items[i] = try self.eval(elem);
+                }
+                break :blk Value{ .arr = .{
+                    .items = items,
+                    .allocator = self.allocator,
+                } };
+            },
             .bin => |b| blk: {
                 const left = try self.eval(b.lhs);
                 const right = try self.eval(b.rhs);
@@ -87,12 +144,12 @@ pub const Interpreter = struct {
             },
             .call => |call_node| blk: {
                 // if (std.mem.eql(u8, call_node.name, "print")) {
-                    // for (call_node.args.items) |arg| {
-                        // const v = try self.eval(arg);
-                        // try printValue(v);
-                    // }
-                    // std.debug.print("\n", .{});
-                    // break :blk Value.v;
+                // for (call_node.args.items) |arg| {
+                // const v = try self.eval(arg);
+                // try printValue(v);
+                // }
+                // std.debug.print("\n", .{});
+                // break :blk Value.v;
                 // }
 
                 if (self.methods.get(call_node.name)) |method| {
@@ -111,8 +168,71 @@ pub const Interpreter = struct {
         };
     }
 
+    fn toStringValue(allocator: std.mem.Allocator, val: Value) anyerror![]const u8 {
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+
+        switch (val) {
+            .i32 => |v| try buffer.writer().print("{}", .{v}),
+            .f32 => |v| try buffer.writer().print("{d:.2}", .{v}),
+            .bln => |v| try buffer.writer().print("{}", .{v}),
+            .arr => |arr| {
+                try buffer.append('[');
+                for (arr.items, 0..) |item, i| {
+                    if (i > 0) try buffer.appendSlice(", ");
+                    const s = try toStringValue(allocator, item);
+                    defer allocator.free(s);
+                    try buffer.appendSlice(s);
+                }
+                try buffer.append(']');
+            },
+            .str => |s| {
+                try buffer.appendSlice(s);
+            },
+            .v => {
+                try buffer.appendSlice("Void");
+            },
+        }
+        return buffer.toOwnedSlice();
+    }
+
+    fn handleArrayOperation(self: *Interpreter, op: lexer.TokenType, a: Value, b: Value) !Value {
+        const allocator = self.allocator;
+        // Array-Array operations
+        if (a == .arr and b == .arr) {
+            if (a.arr.items.len != b.arr.items.len) {
+                return InterpreterError.ArrayLengthMismatch;
+            }
+            const results = try allocator.alloc(Value, a.arr.items.len);
+            for (a.arr.items, b.arr.items, 0..) |a_item, b_item, i| {
+                results[i] = try self.evalBinaryOp(op, a_item, b_item);
+            }
+            return Value{ .arr = .{ .items = results, .allocator = self.allocator } };
+        }
+
+        // Array-Scalar operations
+        if (a == .arr) {
+            const results = try allocator.alloc(Value, a.arr.items.len);
+            for (a.arr.items, 0..) |item, i| {
+                results[i] = try self.evalBinaryOp(op, item, b);
+            }
+            return Value{ .arr = .{ .items = results, .allocator = self.allocator } };
+        }
+
+        if (b == .arr) {
+            const results = try allocator.alloc(Value, b.arr.items.len);
+            for (b.arr.items, 0..) |item, i| {
+                results[i] = try self.evalBinaryOp(op, a, item);
+            }
+            return Value{ .arr = .{ .items = results, .allocator = self.allocator } };
+        }
+
+        return InterpreterError.TypeMismatch;
+    }
+
     /// Handle binary operations
-    fn evalBinaryOp(self: *Interpreter, op: lexer.TokenType, left: Value, right: Value) !Value {
+    fn evalBinaryOp(self: *Interpreter, op: lexer.TokenType, left: Value, right: Value) anyerror!Value {
+        if (left == .arr or right == .arr) return self.handleArrayOperation(op, left, right);
         return switch (op) {
             .Plus => self.add(left, right),
             .Minus => self.sub(left, right),
@@ -125,6 +245,14 @@ pub const Interpreter = struct {
     }
 
     fn add(self: *Interpreter, a: Value, b: Value) !Value {
+        if (a == .str or b == .str) {
+            const a_str = try toStringValue(self.allocator, a);
+            defer self.allocator.free(a_str);
+            const b_str = try toStringValue(self.allocator, b);
+            defer self.allocator.free(b_str);
+            return try stringConcat(self.allocator, a_str, b_str);
+        }
+
         switch (a) {
             .i32 => |a_int| switch (b) {
                 .i32 => |b_int| return Value{ .i32 = a_int + b_int },
@@ -145,14 +273,6 @@ pub const Interpreter = struct {
                     return try stringConcat(self.allocator, a_str, b_str);
                 },
                 else => return InterpreterError.TypeMismatch,
-            },
-            .str => |a_str| switch (b) {
-                .str => |b_str| return try stringConcat(self.allocator, a_str, b_str),
-                else => {
-                    const b_str = try toString(self.allocator, b);
-                    defer self.allocator.free(b_str);
-                    return try stringConcat(self.allocator, a_str, b_str);
-                },
             },
             else => return InterpreterError.TypeMismatch,
         }
@@ -256,6 +376,29 @@ pub const Interpreter = struct {
         return Value{ .str = result };
     }
 
+    fn arrayIndex(self: *Interpreter, array: Value, index: Value) !Value {
+        _ = self;
+        if (array != .array) return InterpreterError.TypeMismatch;
+        if (index != .i32) return InterpreterError.TypeMismatch;
+
+        const idx = @as(usize, @intCast(index.i32));
+        if (idx >= array.array.items.len) {
+            return InterpreterError.IndexOutOfBounds;
+        }
+
+        return array.array.items[idx];
+    }
+
+    fn arrayConcat(self: *Interpreter, a: Value, b: Value) !Value {
+        const allocator = self.allocator;
+        const new_items = try allocator.alloc(Value, a.arr.items.len + b.arr.items.len);
+        @memcpy(new_items[0..a.arr.items.len], a.arr.items);
+        @memcpy(new_items[a.items.len..], b.arr.items);
+        return Value{ .array = .{
+            .items = new_items,
+            .allocator = allocator,
+        } };
+    }
 };
 
 fn toString(allocator: std.mem.Allocator, v: Value) ![]const u8 {
@@ -268,7 +411,19 @@ fn toString(allocator: std.mem.Allocator, v: Value) ![]const u8 {
         .str => |s| return s,
         .bln => |b| try buffer.writer().print("{}", .{b}),
         .v => try buffer.writer().print("void", .{}),
+        .arr => |arr| try buffer.writer().print("{any}", .{arr}),
     }
 
     return buffer.toOwnedSlice();
+}
+
+pub fn getType(v: Value) ValueType {
+    switch (v) {
+        .i32 => return .i32,
+        .f32 => return .f32,
+        .str => return .str,
+        .bln => return .bln,
+        .v => return .v,
+        .arr => return .arr,
+    }
 }
